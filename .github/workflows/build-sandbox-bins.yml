@@ -1,0 +1,42 @@
+name: Build Sandbox Binaries (linux-x86_64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build yukic, yukino & LSP
+        run: |
+          cargo build --release --bin yukic --bin yukino --bin yukino-lsp
+          mkdir -p dist
+          cp target/release/yukic dist/
+          cp target/release/yukino dist/
+          cp target/release/yukino-lsp dist/
+          chmod +x dist/*
+
+      - name: Verify binaries & shared libs
+        run: |
+          file dist/*
+          ldd dist/yukic dist/yukino dist/yukino-lsp || true
+
+      - name: Package
+        run: tar -czf yukino-linux-x86_64.tar.gz -C dist .
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sandbox-bins
+          name: Sandbox Binaries (linux-x86_64)
+          files: yukino-linux-x86_64.tar.gz
+          make_latest: false
