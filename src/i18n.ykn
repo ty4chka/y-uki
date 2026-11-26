@@ -1,0 +1,412 @@
+// i18n.ykn — minimal localization: an EN/RU key table with argument substitution.
+// The table lives in three parallel arrays: a module-level static HashMap does not
+// work in this compiler. An unknown key is returned as-is, never panics.
+// Numeric arguments are passed as strings only: the caller must call int_str().
+
+load std.strings: eq, replace
+load std.env: get_or, set_env, has_env
+load .util: str_lower, str_starts, int_str
+
+static I18N_KEYS: string[] = [
+    "help.section.system",
+    "help.section.look",
+    "help.section.project",
+    "help.section.trust",
+    "help.section.maintainers",
+    "help.section.help",
+    "help.h.install",
+    "help.h.repair_remove",
+    "help.h.move_newer",
+    "help.h.autoremove",
+    "help.h.keep_version",
+    "help.h.undo_see_log",
+    "help.h.profile",
+    "help.h.publisher",
+    "help.h.find_read",
+    "help.h.what_installed",
+    "help.h.owns_why",
+    "help.h.tree",
+    "help.h.graph",
+    "help.h.outdated",
+    "help.h.check",
+    "help.h.export_import",
+    "help.h.catalog_tags",
+    "help.h.add_remove",
+    "help.h.fetch_update",
+    "help.h.keys",
+    "help.h.theme",
+    "help.h.pack",
+    "help.h.index",
+    "help.h.publish",
+    "help.h.doctor",
+    "help.h.selftest",
+    "help.h.completions",
+    "help.footer.flags",
+    "help.footer.options",
+    "help.footer.env",
+    "help.cmd.install.desc",
+    "help.cmd.scan.desc",
+    "help.cmd.reinstall.desc",
+    "help.cmd.uninstall.desc",
+    "help.cmd.upgrade.desc",
+    "help.cmd.self-update.desc",
+    "help.cmd.list.desc",
+    "help.cmd.info.desc",
+    "help.cmd.files.desc",
+    "help.cmd.owns.desc",
+    "help.cmd.why.desc",
+    "help.cmd.tree.desc",
+    "help.cmd.check.desc",
+    "help.cmd.sys-audit.desc",
+    "help.cmd.outdated.desc",
+    "help.cmd.hold.desc",
+    "help.cmd.unhold.desc",
+    "help.cmd.history.desc",
+    "help.cmd.rollback.desc",
+    "help.cmd.export.desc",
+    "help.cmd.import.desc",
+    "help.cmd.search.desc",
+    "help.cmd.catalog.desc",
+    "help.cmd.tags.desc",
+    "help.cmd.profile.desc",
+    "help.cmd.show.desc",
+    "help.cmd.add.desc",
+    "help.cmd.remove.desc",
+    "help.cmd.fetch.desc",
+    "help.cmd.update.desc",
+    "help.cmd.audit.desc",
+    "help.cmd.keys.desc",
+    "help.cmd.theme.desc",
+    "help.cmd.pack.desc",
+    "help.cmd.publish.desc",
+    "help.cmd.yank.desc",
+    "help.cmd.renew.desc",
+    "help.cmd.index.desc",
+    "help.cmd.verify.desc",
+    "help.cmd.verify-sig.desc",
+    "help.cmd.inspect.desc",
+    "help.cmd.doctor.desc",
+    "help.cmd.config.desc",
+    "help.cmd.clean.desc",
+    "help.cmd.explain.desc",
+    "help.cmd.completions.desc",
+    "help.cmd.selftest.desc",
+    "help.cmd.version.desc",
+    "help.cmd.install.flags",
+    "err.unknown_option",
+    "err.self_update_hint",
+    "err.no_such_command",
+    "err.no_such_command_hint",
+    "err.shell_must_be",
+    "err.no_explanation",
+    "err.dispatch_wrong_args",
+    "err.dispatch_usage",
+    "err.dispatch_unknown",
+    "err.dispatch_did_you_mean",
+    "err.see_help",
+    "err.tar_hint",
+    "err.unexpected",
+    "err.run_doctor"
+]
+
+static I18N_EN: string[] = [
+    "(like pacman; changing the system needs sudo)",
+    "(no root needed)",
+    "(libraries in yuki.toml)",
+    "trust and look",
+    "maintainers",
+    "(yuki help <command>, yuki explain <code>)",
+    "binary for your platform, or build from source",
+    "repair or remove (-Rs also removes unneeded deps)",
+    "move to newer signed releases",
+    "remove orphaned dependencies",
+    "keep a package at its version",
+    "undo a transaction, see the log",
+    "package sets: yours and curated ones",
+    "who stands behind a package: platforms + signing keys",
+    "find packages, read their description",
+    "what is installed",
+    "who owns a file, why a package is here",
+    "dependencies, dependents, both",
+    "the whole installed graph, or Graphviz",
+    "what can be upgraded, what is unneeded",
+    "files vs database, withdrawn versions",
+    "move a package list between machines",
+    "browse the signed catalog, its topics",
+    "resolve, verify, pin in yuki.toml",
+    "re-verify, upgrade, compare with the index",
+    "signing keys and trusted keys",
+    "colors, symbols, animation, presets",
+    "build a package archive",
+    "manage the index repository",
+    "library releases",
+    "check the setup, show settings, free cache",
+    "check this build: hashes, signatures, threads",
+    "shell completion",
+    "pacman-style flags: -S -Ss -Si -Syu -R -Rs -Q -Qi -Ql -Qo -Qe -Qd -Qdt -Qu -Qk",
+    "options: --yes --allow-build --overwrite --force --recursive",
+    "YUKI_INDEX sets the index URL, NO_COLOR=1 disables colors",
+    "Installs an application: a prebuilt binary for your platform, or builds it from source in a sandbox if you agree.",
+    "Heuristic review of an unpacked package tree: what looks bad and why (reverse shells, miners, persistence, obfuscated payloads).",
+    "Installs the same version again: repairs modified or missing files.",
+    "Removes a package with a rollback journal. Refuses if another package needs it (use --force).",
+    "Shows old → new versions, asks once, then upgrades. Held packages are skipped.",
+    "Upgrades yuki itself. The new binary must start, otherwise the upgrade is rolled back.",
+    "Lists installed packages with version and origin (binary or source).",
+    "Shows details of an installed package: checksum, signer, dependencies, file count.",
+    "Prints every file the package installed.",
+    "Tells which package owns a file.",
+    "Explains why a package is installed: who depends on it, or that it was installed explicitly.",
+    "Prints the dependency tree of an installed package.",
+    "Compares files on disk with the database. Reports missing and modified files.",
+    "Finds installed versions that were withdrawn (yanked) from the signed index.",
+    "Lists installed packages that have a newer signed release. Does not change anything.",
+    "Keeps a package at its current version: upgrade skips it. `yuki hold` alone lists held packages.",
+    "Lets upgrade touch the package again.",
+    "Prints the transaction log (installs, removals, rollbacks).",
+    "Undoes a transaction from its journal: files, directories and database. Without an id it takes the last one.",
+    "Prints explicitly installed packages as name@version lines.",
+    "Installs every package listed in a file made by `yuki export`.",
+    "Searches the signed catalog by name, summary and tags. `tag:x` matches a tag exactly.",
+    "The signed catalog as a readable list: summary, tags, license, repository. A query filters it; without one it lists everything.",
+    "Topics used across the catalog, most used first.",
+    "Named package sets. Yours live in /var/lib/yuki/profiles; the catalog may offer curated ones too. install runs the normal verified install for every package.",
+    "Shows what the index offers: version, kind, dependencies, whether a binary exists for your platform.",
+    "Adds a library and its dependency tree to [libs.runtime] in yuki.toml, verified and hash-pinned.",
+    "Removes a library from yuki.toml and lists dependencies that came with it.",
+    "Re-downloads and re-verifies every library in yuki.toml.",
+    "Moves libraries to newer signed releases and rewrites their dependency lines.",
+    "Compares yuki.toml with the signed index: hash changes, withdrawn versions.",
+    "Manages signing keys and the keys you trust.",
+    "Creates, previews and locates theme.toml. Presets: default, ansi, mono, light, contrast; `use` keeps the old file as .bak.",
+    "Builds a package archive from a directory (usr/bin/..., etc/...), checks it against the install policy and prints the blake3 and a ready index snippet.",
+    "Maintainer: adds a library release to the index checkout and signs it.",
+    "Maintainer: withdraws a release; clients flag it in `audit` and `sys-audit`.",
+    "Maintainer: extends the validity of an entry by 90 days and re-signs it.",
+    "Maintainer tools for the index repository. `check` is what CI runs on every pull request.",
+    "Checks a file against a blake3 checksum.",
+    "Checks an Ed25519 signature (hex) made with the yuki-v1 domain.",
+    "Audits an archive without unpacking it.",
+    "Checks your setup: index, keys, sandbox, terminal, permissions, clock. Every problem comes with a fix.",
+    "Prints the effective configuration: directories, index URL, platform, threshold, sandbox.",
+    "Deletes partial downloads. `all` also empties the cache.",
+    "Explains an error code in detail: why it happens and how to fix it.",
+    "Prints a shell completion script.",
+    "Checks this build against known values: BLAKE3, Ed25519, path policy, JSON stability, files and threads. Run it right after building.",
+    "Prints the version.",
+    "flags: --yes (skip the plan prompt), --allow-build (accept source builds), --overwrite",
+    "unknown option {0}: try `yuki help`",
+    "yuki was not installed by yuki: run `sudo yuki install yuki` once",
+    "no such command: {0}",
+    "no such command: {0}. Did you mean `{1}`?",
+    "shell must be bash, zsh or fish",
+    "no explanation for \"{0}\"",
+    "wrong arguments for `{0}`",
+    "usage: {0}\nmore: yuki help {1}",
+    "unknown command: {0}",
+    "did you mean `yuki {0}`?",
+    "see `yuki help`",
+    "the archive is damaged or in an unsupported format",
+    "unexpected failure: {0}",
+    "run `yuki doctor`"
+]
+
+static I18N_RU: string[] = [
+    "(как pacman; изменение системы требует sudo)",
+    "(права root не нужны)",
+    "(библиотеки в yuki.toml)",
+    "доверие и обзор",
+    "сопровождающие",
+    "(yuki help <команда>, yuki explain <код>)",
+    "бинарник для вашей платформы или сборка из исходников",
+    "починить или удалить (-Rs также удаляет ненужные зависимости)",
+    "перейти на более новые подписанные выпуски",
+    "удалить осиротевшие зависимости",
+    "удержать пакет на его версии",
+    "отменить транзакцию, посмотреть журнал",
+    "наборы пакетов: ваши и курируемые",
+    "кто стоит за пакетом: платформы + ключи подписи",
+    "найти пакеты, прочитать описание",
+    "что установлено",
+    "кому принадлежит файл, почему пакет здесь",
+    "зависимости, зависимые, и то и другое",
+    "весь граф установленных пакетов или Graphviz",
+    "что можно обновить, что не нужно",
+    "файлы против базы, отозванные версии",
+    "перенести список пакетов между машинами",
+    "просмотр подписанного каталога и его тем",
+    "разрешить, проверить, закрепить в yuki.toml",
+    "перепроверить, обновить, сравнить с индексом",
+    "ключи подписи и доверенные ключи",
+    "цвета, символы, анимация, пресеты",
+    "собрать архив пакета",
+    "управление репозиторием индекса",
+    "выпуски библиотек",
+    "проверить настройку, показать параметры, очистить кэш",
+    "проверить эту сборку: хеши, подписи, потоки",
+    "автодополнение оболочки",
+    "флаги в стиле pacman: -S -Ss -Si -Syu -R -Rs -Q -Qi -Ql -Qo -Qe -Qd -Qdt -Qu -Qk",
+    "параметры: --yes --allow-build --overwrite --force --recursive",
+    "YUKI_INDEX задаёт URL индекса, NO_COLOR=1 отключает цвета",
+    "Устанавливает приложение: готовый бинарник для вашей платформы или сборка из исходников в песочнице, если вы согласитесь.",
+    "Эвристический обзор распакованного дерева пакета: что выглядит подозрительно и почему (reverse shells, майнеры, закрепление, обфусцированные полезные нагрузки).",
+    "Устанавливает ту же версию заново: восстанавливает изменённые или отсутствующие файлы.",
+    "Удаляет пакет с журналом для отката. Отказывается, если пакет нужен другому (используйте --force).",
+    "Показывает старые → новые версии, один раз спрашивает и обновляет. Удержанные пакеты пропускаются.",
+    "Обновляет сам yuki. Новый бинарник должен запуститься, иначе обновление откатывается.",
+    "Список установленных пакетов с версией и происхождением (бинарник или исходники).",
+    "Подробности установленного пакета: контрольная сумма, подписант, зависимости, число файлов.",
+    "Печатает все файлы, установленные пакетом.",
+    "Сообщает, какому пакету принадлежит файл.",
+    "Объясняет, почему пакет установлен: кто от него зависит или что он установлен явно.",
+    "Печатает дерево зависимостей установленного пакета.",
+    "Сравнивает файлы на диске с базой. Сообщает об отсутствующих и изменённых файлах.",
+    "Находит установленные версии, отозванные (yanked) из подписанного индекса.",
+    "Список установленных пакетов, для которых есть более новый подписанный выпуск. Ничего не меняет.",
+    "Удерживает пакет на текущей версии: upgrade его пропускает. `yuki hold` без аргументов показывает удержанные пакеты.",
+    "Снова разрешает upgrade трогать пакет.",
+    "Печатает журнал транзакций (установки, удаления, откаты).",
+    "Отменяет транзакцию по её журналу: файлы, каталоги и база. Без id берёт последнюю.",
+    "Печатает явно установленные пакеты в виде строк name@version.",
+    "Устанавливает все пакеты из файла, созданного `yuki export`.",
+    "Ищет в подписанном каталоге по имени, описанию и тегам. `tag:x` точно совпадает с тегом.",
+    "Подписанный каталог в виде читаемого списка: описание, теги, лицензия, репозиторий. Запрос фильтрует список; без запроса выводится всё.",
+    "Темы, используемые в каталоге, сначала самые популярные.",
+    "Именованные наборы пакетов. Ваши лежат в /var/lib/yuki/profiles; каталог может предлагать и курируемые. install выполняет обычную проверенную установку для каждого пакета.",
+    "Показывает, что предлагает индекс: версию, тип, зависимости, наличие бинарника для вашей платформы.",
+    "Добавляет библиотеку и её дерево зависимостей в [libs.runtime] файла yuki.toml, с проверкой и фиксацией хеша.",
+    "Удаляет библиотеку из yuki.toml и перечисляет зависимости, пришедшие с ней.",
+    "Заново скачивает и проверяет все библиотеки из yuki.toml.",
+    "Переводит библиотеки на более новые подписанные выпуски и переписывает строки их зависимостей.",
+    "Сравнивает yuki.toml с подписанным индексом: изменения хешей, отозванные версии.",
+    "Управляет ключами подписи и ключами, которым вы доверяете.",
+    "Создаёт, показывает и находит theme.toml. Пресеты: default, ansi, mono, light, contrast; `use` сохраняет старый файл как .bak.",
+    "Собирает архив пакета из каталога (usr/bin/..., etc/...), проверяет его по политике установки и печатает blake3 и готовый фрагмент записи индекса.",
+    "Сопровождающий: добавляет выпуск библиотеки в checkout индекса и подписывает его.",
+    "Сопровождающий: отзывает выпуск; клиенты помечают его в `audit` и `sys-audit`.",
+    "Сопровождающий: продлевает срок действия записи на 90 дней и переподписывает её.",
+    "Инструменты сопровождающего для репозитория индекса. `check` — то, что CI запускает для каждого pull request.",
+    "Проверяет файл по контрольной сумме blake3.",
+    "Проверяет подпись Ed25519 (hex), сделанную с доменом yuki-v1.",
+    "Аудит архива без распаковки.",
+    "Проверяет настройку: индекс, ключи, песочница, терминал, права, часы. К каждой проблеме предлагается исправление.",
+    "Печатает действующую конфигурацию: каталоги, URL индекса, платформа, порог, песочница.",
+    "Удаляет незавершённые загрузки. `all` также очищает кэш.",
+    "Подробно объясняет код ошибки: почему он возникает и как это исправить.",
+    "Печатает скрипт автодополнения для оболочки.",
+    "Проверяет эту сборку по известным значениям: BLAKE3, Ed25519, политика путей, стабильность JSON, файлы и потоки. Запускайте сразу после сборки.",
+    "Печатает версию.",
+    "флаги: --yes (пропустить подтверждение плана), --allow-build (разрешить сборку из исходников), --overwrite",
+    "неизвестный параметр {0}: попробуйте `yuki help`",
+    "yuki был установлен не через yuki: один раз выполните `sudo yuki install yuki`",
+    "нет такой команды: {0}",
+    "нет такой команды: {0}. Возможно, вы имели в виду `{1}`?",
+    "shell должен быть bash, zsh или fish",
+    "нет объяснения для \"{0}\"",
+    "неверные аргументы для `{0}`",
+    "использование: {0}\nподробнее: yuki help {1}",
+    "неизвестная команда: {0}",
+    "возможно, вы имели в виду `yuki {0}`?",
+    "см. `yuki help`",
+    "архив повреждён или имеет неподдерживаемый формат",
+    "непредвиденная ошибка: {0}",
+    "выполните `yuki doctor`"
+]
+
+fun find(k: string) -> int64 {
+    for i in 0..I18N_KEYS.len() {
+        if eq(I18N_KEYS[i], k) {
+            return i
+        }
+    }
+    return -1
+}
+
+// Fallback for call sites that pass literal English text instead of a key
+// (row() descriptions, help_lines() descriptions and flag lines): finds the
+// table row whose English column matches, so t() can pick the RU column.
+fun find_en(v: string) -> int64 {
+    for i in 0..I18N_EN.len() {
+        if eq(I18N_EN[i], v) {
+            return i
+        }
+    }
+    return -1
+}
+
+// Substitutes {0}, {1}, ... with values from args. replace() returns an empty string
+// for an empty result, so only non-empty results are applied and re-copied.
+fun subst(s_in: string, args: string[]) -> string {
+    set out: string = s_in + ""
+    for i in 0..args.len() {
+        set ph = "{" + int_str(i) + "}"
+        set r = replace(out, ph, args[i])
+        if r.len() > 0 {
+            rewrite out = r + ""
+        }
+    }
+    return out
+}
+
+public fun t(key: string, args: string[] = []) -> string {
+    set i = find(key)
+    if i < 0 {
+        rewrite i = find_en(key)
+    }
+    if i < 0 {
+        return key
+    }
+    set s = I18N_EN[i]
+    if eq(lang(), "ru") {
+        rewrite s = I18N_RU[i]
+    }
+    return subst(s, args)
+}
+
+// ru_RU.UTF-8 and other ru* -> "ru"; en* -> "en"; otherwise empty.
+fun lang_from_locale(v: string) -> string {
+    set l = str_lower(v)
+    if str_starts(l, "ru") {
+        return "ru"
+    }
+    if str_starts(l, "en") {
+        return "en"
+    }
+    return ""
+}
+
+fun lang_normalize(v: string) -> string {
+    return lang_from_locale(v)
+}
+
+// Precedence: YUKI_LANG_CACHE -> YUKI_LANG -> LANG -> LC_ALL -> "en".
+public fun lang() -> string {
+    if has_env("YUKI_LANG_CACHE") {
+        set c = lang_normalize(get_or("YUKI_LANG_CACHE", ""))
+        if c.len() > 0 {
+            return c
+        }
+    }
+    set a = lang_normalize(get_or("YUKI_LANG", ""))
+    if a.len() > 0 {
+        return a
+    }
+    set b = lang_normalize(get_or("LANG", ""))
+    if b.len() > 0 {
+        return b
+    }
+    set d = lang_normalize(get_or("LC_ALL", ""))
+    if d.len() > 0 {
+        return d
+    }
+    return "en"
+}
+
+// An empty or invalid value enables auto-detection, never crashes.
+public fun i18n_init(v: string) {
+    set n = lang_normalize(v)
+    if n.len() == 0 {
+        rewrite n = lang()
+    }
+    set_env("YUKI_LANG_CACHE", n)
+}
