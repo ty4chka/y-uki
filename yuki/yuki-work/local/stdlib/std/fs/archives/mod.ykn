@@ -1,2 +1,0 @@
-public load .tar: *
-public load .zip: *

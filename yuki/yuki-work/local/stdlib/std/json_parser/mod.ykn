@@ -1,4 +1,0 @@
-public load .tokens: *
-public load .value: *
-public load .scanner: *
-public load .parser: *
