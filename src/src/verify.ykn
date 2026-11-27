@@ -90,7 +90,9 @@ public fun is_safe_rel_path(p: string) -> bool {
     if p.len() == 0 || p.len() > 1024 {
         return false
     }
-    if str_starts(p, "/") || contains(p, "\\") || contains(p, "\0") || contains(p, ":") {
+    // Control characters (including \n, \r, \t) corrupt line-based records
+    // such as the transaction journal and the database file lists.
+    if str_starts(p, "/") || contains(p, "\\") || contains(p, "\0") || contains(p, ":") || contains(p, "\n") || contains(p, "\r") || contains(p, "\t") {
         return false
     }
     set parts = str_split(p, "/")
@@ -194,7 +196,8 @@ public fun audit_tar(archive: string, max_entries: int64, max_total: int64, max_
                 path: archive,
             })
         }
-        if entries[i].size > max_file {
+        // A negative size would shrink the accumulated total below the cap.
+        if entries[i].size < 0 || entries[i].size > max_file {
             panic(VerifyError {
                 message: "file is too large: " + entries[i].path,
                 code: 6,

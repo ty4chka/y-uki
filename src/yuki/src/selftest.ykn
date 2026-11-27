@@ -7,13 +7,13 @@ load core.utils: cast
 load core.panic: panic
 load std.env: get_or, set_env
 load std.threads: spawn, join
-load std.json: json_parse, json_stringify
+load std.json: json_parse, json_stringify, json_object, json_array, json_string, json_int
 load std.hash: bytes_to_hex, blake3_str
 load std.hash.blake3: blake3_file
 load std.crypto: ed25519_public_key, ed25519_sign, random_bytes
 load std.fs.archives.tar: tar_list
 load std.os.unix: chmod
-load std.fs.files: file_exists, file_write_text, file_read_text
+load std.fs.files: file_exists, file_write_text, file_read_text, file_metadata
 load std.fs.dirs: dir_create_all, dir_remove_all
 load std.fs.defaults: dir_temp
 load std.strings: eq, contains, slice, parse_int
@@ -24,8 +24,10 @@ load .ui: ok, bad, info, c_dim
 load .util: str_lower, str_pad_end, valid_name, valid_version, ver_cmp, digits_val, edit_distance, now_ms, join2, str_split, int_str
 load .verify: is_safe_rel_path, link_target_ok, resolve_link_target, checksum_ok_format, verify_text, signed_message
 load .policy: policy_check, policy_check_link
-load .index: seen_get, seen_set, seen_hash
-load .tarpack: tar_pack_tree
+load .index: seen_get, seen_set, seen_hash, resolve_text
+load .trust: keygen, trust_add, sign_text
+load .apply: rollback_tx
+load .tarpack: tar_pack_tree, build_script_of
 
 fun println_header() {
     info("running self-tests")
@@ -37,6 +39,36 @@ fun slice_from(s: string, from: int64) -> string {
 
 fun set_env_local(path: string) {
     set_env("YUKI_SELFTEST_FILE", path)
+}
+
+// A minimal valid signed index entry (lib, source only) for the anti-rollback
+// checks: the same shape write_entry produces for a source-only library.
+fun st_entry_text(name: string, seq: int64, ver: string, keyname: string, pk: string) -> string {
+    set src = json_object()
+    src.set("url", json_string("https://example.test/a.tar"))
+    src.set("checksum", json_string("blake3:" + blake3_str("src")))
+    set bl = json_array([])
+    bl.push(json_string("true"))
+    src.set("build", bl)
+    set v = json_object()
+    v.set("version", json_string(ver))
+    v.set("src", src)
+    v.set("deps", json_array([]))
+    set versions = json_array([])
+    versions.push(v)
+    set cs = json_object()
+    cs.set("key", json_string(pk))
+    cs.set("sig", json_string(sign_text(keyname, "content\n" + json_stringify(versions.cp()))))
+    set sigs = json_array([])
+    sigs.push(cs)
+    set root = json_object()
+    root.set("name", json_string(name))
+    root.set("kind", json_string("lib"))
+    root.set("seq", json_int(seq))
+    root.set("expires", json_int(2000000000))
+    root.set("versions", versions.cp())
+    root.set("content_sigs", sigs)
+    return json_stringify(root)
 }
 
 fun check(cond: bool, label: string, ref ~failed: int64) {
@@ -169,6 +201,90 @@ public fun cmd_selftest() {
         }
     }
     check(pk_file && pk_dirs == 2 && pk_ents.len() == 3, "pack: relative names, directories and the executable bit", ref ~failed)
+
+    // path policy: "./" and "//" are canonicalized before the checks, control
+    // characters are refused (they would corrupt the line-based records)
+    check(policy_check("x", "etc/./passwd").len() > 0 && policy_check("x", "etc//passwd").len() > 0 && policy_check("x", "usr/bin/./sudo").len() > 0, "policy canonicalizes ./ and // before the protected-path checks", ref ~failed)
+    check(policy_check("x", "usr/bin/./rg").len() == 0, "policy still allows ordinary paths after canonicalizing", ref ~failed)
+    check(!is_safe_rel_path("a\nb") && !is_safe_rel_path("a\rb") && !is_safe_rel_path("a\tb"), "control characters are refused in relative paths", ref ~failed)
+    check(policy_check_link("x", "usr/lib/x", "a\nb").len() > 0, "policy_check_link refuses control characters in a symlink target", ref ~failed)
+
+    // build.ykn detection: at the archive root and inside a single wrapper folder
+    set bs = join2(dir, "bsrc")
+    dir_create_all(bs)
+    file_write_text(join2(bs, "build.ykn"), "echo one")
+    file_write_text(join2(bs, "main.ykn"), "x")
+    set ba = join2(dir, "bsrc.tar")
+    tar_pack_tree(ba, bs)
+    check(eq(build_script_of(ba), "echo one"), "build_script_of finds build.ykn at the archive root", ref ~failed)
+    set bw = join2(dir, "bwrap")
+    dir_create_all(join2(bw, "repo-1.0"))
+    file_write_text(join2(join2(bw, "repo-1.0"), "build.ykn"), "echo two")
+    set bwa = join2(dir, "bwrap.tar")
+    tar_pack_tree(bwa, bw)
+    check(eq(build_script_of(bwa), "echo two"), "build_script_of finds build.ykn in a wrapper folder", ref ~failed)
+    set bn = join2(dir, "bnone")
+    dir_create_all(bn)
+    file_write_text(join2(bn, "main.ykn"), "x")
+    set bna = join2(dir, "bnone.tar")
+    tar_pack_tree(bna, bn)
+    check(eq(build_script_of(bna), ""), "build_script_of reports no script when absent", ref ~failed)
+
+    // journal rollback: a backup path with spaces and a symlink target with
+    // spaces are restored, not skipped by the line parser
+    set_env("YUKI_STATE_DIR", dir)
+    static txid = "selftest-tx"
+    set txd = join2(join2(dir, "tx"), txid)
+    dir_create_all(txd)
+    set bakp = join2(txd, "bak file.txt")
+    file_write_text(bakp, "old")
+    set dst = join2(dir, "dst.txt")
+    set dst2 = join2(dir, "dst2.txt")
+    set dst3 = join2(dir, "dst3.txt")
+    file_write_text(dst, "new")
+    file_write_text(dst3, "temp")
+    file_write_text(join2(txd, "journal"), "new " + dst3 + "\nbak " + dst + " " + bakp + " 644\noldlink " + dst2 + " my target with spaces\n")
+    rollback_tx(txid)
+    check(eq(file_read_text(dst), "old"), "rollback restores a backup whose path contains spaces", ref ~failed)
+    check(file_metadata(dst2).is_symlink, "rollback recreates a symlink whose target contains spaces", ref ~failed)
+    check(!file_exists(dst3), "rollback removes a newly created file", ref ~failed)
+    set_env("YUKI_STATE_DIR", "")
+
+    // resolve_text (lib, source only) anti-rollback: an equal seq with
+    // different content is refused, an older seq is refused, a legacy
+    // two-field record is accepted and backfilled with the content hash
+    set cdir = join2(dir, "cfg")
+    dir_create_all(cdir)
+    set_env("YUKI_CONFIG_DIR", cdir)
+    set_env("YUKI_STATE_DIR", dir)
+    file_write_text(join2(cdir, "allowed_hosts"), "example.test")
+    set pk = keygen("st-key")
+    trust_add("st-key", pk, "publisher", true)
+    set ta = st_entry_text("st-pkg", 5, "1.0.0", "st-key", pk)
+    set ra = resolve_text("st-pkg", "", ta, sign_text("st-key", ta), true)
+    check(eq(ra.url, "https://example.test/a.tar") && eq(ra.checksum, "blake3:" + blake3_str("src")), "resolve_text resolves a source-only lib entry", ref ~failed)
+    set tb = st_entry_text("st-pkg", 5, "1.0.1", "st-key", pk)
+    set refused = false
+    sus {
+        resolve_text("st-pkg", "", tb, sign_text("st-key", tb), true)
+    } catch {
+        rewrite refused = true
+    }
+    check(refused, "resolve_text refuses different content at the same seq", ref ~failed)
+    set tc = st_entry_text("st-pkg", 4, "0.9.0", "st-key", pk)
+    set refused2 = false
+    sus {
+        resolve_text("st-pkg", "", tc, sign_text("st-key", tc), true)
+    } catch {
+        rewrite refused2 = true
+    }
+    check(refused2, "resolve_text refuses an older seq", ref ~failed)
+    file_write_text(join2(dir, "seen"), "st-pkg 5\n")
+    set rd = resolve_text("st-pkg", "", tb, sign_text("st-key", tb), true)
+    check(eq(rd.version, "1.0.1") && seen_hash("st-pkg").len() > 0, "resolve_text accepts and backfills a legacy record at equal seq", ref ~failed)
+    set_env("YUKI_CONFIG_DIR", "")
+    set_env("YUKI_STATE_DIR", "")
+
     dir_remove_all(dir)
 
     check(contains(host_target(), "-"), "platform name looks like os-cpu: " + host_target(), ref ~failed)

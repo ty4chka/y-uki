@@ -6,7 +6,7 @@ load std.strings: split, lines, lower, pad_end, repeat, str_join, parse_int, sli
 // uses plain bool/int64. The wrappers give the old semantics: null -> false / -1.
 // IMPORTANT: wrapper names must NOT collide with std (str_*), otherwise the compiler
 // confuses them with the same-named std functions and the wrapper calls itself.
-load std.strings: starts_with, ends_with, index_of, index_of_from
+load std.strings: starts_with, ends_with, index_of, index_of_from, last_index_of
 load std.fs: path_join
 
 public fun str_starts(s: string, prefix: string) -> bool {
@@ -33,6 +33,12 @@ public fun join2(a: string, b: string) -> string {
 // index of the first occurrence or -1
 public fun str_index(s: string, sub: string) -> int64 {
     set r: int64? = index_of(s, sub)
+    return r ?? -1
+}
+
+// index of the last occurrence or -1
+public fun str_last_index(s: string, sub: string) -> int64 {
+    set r: int64? = last_index_of(s, sub)
     return r ?? -1
 }
 
@@ -179,6 +185,24 @@ public fun edit_distance(a: string, b: string) -> int64 {
 public fun str_split(s: string, delim: string) -> string[] {
     set r: string[] = split(s, delim)
     return r.cp()
+}
+
+// split into at most n parts: the last part keeps the remaining delimiters
+public fun str_split_n(s: string, delim: string, n: int64) -> string[] {
+    set r: string[] = split(s, delim)
+    if n <= 0 || r.len() <= n {
+        return r.cp()
+    }
+    set out: string[] = []
+    for i in 0..n - 1 {
+        out.push(r[i] + "")
+    }
+    set tail = r[n - 1] + ""
+    for i in n..r.len() {
+        rewrite tail = tail + delim + (r[i] + "")
+    }
+    out.push(tail + "")
+    return out
 }
 
 public fun str_lines(s: string) -> string[] {

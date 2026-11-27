@@ -20,7 +20,7 @@ load .priv: sync_disk
 load .policy: policy_check, policy_check_link, is_config
 load .verify: link_target_ok
 load .sysdb: PkgRecord, db_has, db_dir, db_write, db_files, db_remove, owner_of, dependents_of, history_add, f_hash, f_mode, f_kind, f_path
-load .util: now_secs, now_ms, str_starts, join2, sjoin, str_lines, str_split, int_str
+load .util: now_secs, now_ms, str_starts, join2, sjoin, str_lines, str_split, str_split_n, str_last_index, int_str
 
 public struct ApplyItem {
     name: string
@@ -136,28 +136,45 @@ public fun rollback_tx(txid: string) {
     set ls = str_lines(file_read_text(jf))
     for k in 0..ls.len() {
         set idx = ls.len() - 1 - k
-        set p = str_split(trim(ls[idx]), " ")
-        if p.len() == 0 {
+        // Bounded splits keep the parse correct when a path, backup location
+        // or symlink target contains spaces (package paths are space-free,
+        // but state_dir and targets are not constrained the same way).
+        set p = str_split_n(trim(ls[idx]), " ", 2)
+        if p.len() < 2 {
             continue
         }
-        if eq(p[0], "new") && p.len() == 2 {
+        if eq(p[0], "new") {
             if exists_any(p[1]) {
                 file_remove(p[1])
             }
-        } elif eq(p[0], "newdir") && p.len() == 2 {
+        } elif eq(p[0], "newdir") {
             if dir_exists(p[1]) && dir_is_empty(p[1]) {
                 dir_remove(p[1])
             }
-        } elif (eq(p[0], "bak") || eq(p[0], "del")) && p.len() == 4 {
-            restore_file(p[2], p[1], p[3])
-        } elif eq(p[0], "oldlink") && p.len() == 3 {
-            restore_link(p[1], p[2])
-        } elif eq(p[0], "deldir") && p.len() == 2 {
+        } elif eq(p[0], "deldir") {
             dir_create_all(p[1])
-        } elif eq(p[0], "db") && p.len() == 3 {
-            db_remove(p[1])
-            if eq(p[2], "old") {
-                dir_copy_all(join2(join2(tx_dir(txid), "db"), p[1]), db_dir(p[1]))
+        } elif eq(p[0], "oldlink") {
+            set q = str_split_n(p[1], " ", 2)
+            if q.len() == 2 {
+                restore_link(q[0], q[1])
+            }
+        } elif eq(p[0], "bak") || eq(p[0], "del") {
+            // "<dest> <backup> <mode>": dest is the space-free first field,
+            // mode is the last token, the backup is everything in between.
+            set q = str_split_n(p[1], " ", 2)
+            if q.len() == 2 {
+                set li = str_last_index(q[1], " ")
+                if li > 0 {
+                    restore_file(slice(q[1], 0, li), q[0], slice(q[1], li + 1, q[1].len()))
+                }
+            }
+        } elif eq(p[0], "db") {
+            set q = str_split_n(p[1], " ", 2)
+            if q.len() == 2 {
+                db_remove(q[0])
+                if eq(q[1], "old") {
+                    dir_copy_all(join2(join2(tx_dir(txid), "db"), q[0]), db_dir(q[0]))
+                }
             }
         }
     }

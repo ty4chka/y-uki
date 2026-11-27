@@ -6,12 +6,17 @@
 //
 // {
 //   "name": "json-yukino",
+//   "kind": "lib",             // "lib" (source only) or "app"
 //   "seq": 12,                 // grows on every change: rollback protection
 //   "expires": 1798761600,     // unix seconds: protection against a frozen index
 //   "versions": [
-//     { "version": "1.2.0", "url": "https://github.com/o/r/archive/<commit>.tar.gz",
-//       "checksum": "blake3:<64 hex>", "yanked": false,
-//       "deps": ["ansi-kit@2.0.1", "tomlkit@0.4.0"] }     // versions are pinned exactly
+//     { "version": "1.2.0", "yanked": false,
+//       "src": { "url": "https://github.com/o/r/archive/<commit>.tar.gz",
+//                "checksum": "blake3:<64 hex>", "build": ["yukino", "build", "release"] },
+//       "deps": ["ansi-kit@2.0.1", "tomlkit@0.4.0"] },    // versions are pinned exactly
+//     { "version": "2.0.0", "yanked": false,              // apps also carry binaries
+//       "bin": { "x86_64-unknown-linux-gnu": { "url": "https://...", "checksum": "blake3:<64 hex>" } },
+//       "deps": [] }
 //   ]
 // }
 //
@@ -22,6 +27,7 @@ load core.panic: panic
 load std.json: json_parse, json_stringify
 load std.outf: strip_ansi
 load std.strings: eq, trim, slice, parse_int, contains
+load std.hash: blake3_str
 load std.fs.files: file_exists, file_read_text, file_write_text, file_rename
 load .errors: YukiError, err
 load .config: index_urls, state_dir, ensure_dirs, host_target, MAX_INDEX_FILE
@@ -351,8 +357,17 @@ public fun resolve_text(name: string, want: string, text: string, sig: string, r
     if expires < now_secs() {
         panic(err("index entry has expired (stale or frozen index)", 204, rel_path))
     }
-    if seq < seen_get(name) {
+    // Anti-rollback, seq vs the recorded state: an older seq is refused, and
+    // at an equal seq the content must match the stored hash. A legacy record
+    // without a stored hash is accepted and backfilled by the seen_set below.
+    set prev = seen_get(name)
+    if seq < prev {
         panic(err("index entry is older than one already seen (rollback attack?)", 205, rel_path))
+    }
+    set content_hash = blake3_str(text)
+    set stored_hash = seen_hash(name)
+    if seq == prev && stored_hash.len() > 0 && !eq(content_hash, stored_hash) {
+        panic(err("index entry changed at the same seq (rollback attack?)", 205, rel_path))
     }
     set kind = doc.get("kind").as_string_or("lib")
     if !eq(kind, "lib") && !eq(kind, "app") {
@@ -467,7 +482,7 @@ public fun resolve_text(name: string, want: string, text: string, sig: string, r
     }
 
     if record {
-        seen_set(name, seq)
+        seen_set(name, seq, content_hash)
     }
     return Release {
         name: name,

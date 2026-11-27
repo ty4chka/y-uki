@@ -7,7 +7,7 @@ load core.panic: panic
 load std.net: tcp_connect, tls_connect, TlsError
 load std.strings: trim, slice, contains, eq, parse_int
 load std.fs.files: file_open_write, file_remove, file_write_text
-load .errors: err
+load .errors: YukiError, err
 load .config: host_allowed
 load .util: now_ms, str_starts, str_index, str_lower, str_split, int_str
 
@@ -443,7 +443,16 @@ public fun http_text(url: string, max_bytes: int64) -> string {
 // "received total" updates. Returns the number of received bytes. Panics with
 // YukiError (404-408) on any failure and removes the partial file.
 public fun download(url: string, dest: string, max_bytes: int64, prog_path: string) -> int64 {
-    set r = get_follow(url, dest, max_bytes, prog_path)
+    set r = Response { status: 0, location: "", body: "", received: 0 }
+    sus {
+        rewrite r = get_follow(url, dest, max_bytes, prog_path)
+    } catch e: YukiError {
+        file_remove(dest)
+        panic(e)
+    } catch {
+        file_remove(dest)
+        panic(err("download failed: " + errkind, 409, url))
+    }
     if r.status != 200 {
         file_remove(dest)
         panic(err("HTTP " + int_str(cast(r.status, "int64")) + " for " + url, 404, url))

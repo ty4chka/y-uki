@@ -2,7 +2,7 @@
 // Rules apply to the already verified archive, on the root side.
 
 load std.strings: contains, eq
-load .util: str_starts, str_ends
+load .util: str_starts, str_ends, sjoin, str_split
 load .verify: is_safe_rel_path, resolve_link_target
 
 fun starts_any(p: string, prefixes: string[]) -> bool {
@@ -14,12 +14,30 @@ fun starts_any(p: string, prefixes: string[]) -> bool {
     return false
 }
 
+// Canonical form used for every policy decision: empty and "." components
+// carry no meaning on disk, so "etc//passwd" and "etc/./passwd" must not be
+// able to slip past a prefix check that the canonical path would fail.
+fun norm_rel(p: string) -> string {
+    set parts = str_split(p, "/")
+    set keep: string[] = []
+    for i in 0..parts.len() {
+        if parts[i].len() > 0 && !eq(parts[i], ".") {
+            keep.push(parts[i])
+        }
+    }
+    return sjoin(keep, "/")
+}
+
 // Empty string = the path is allowed, otherwise the rejection reason.
 public fun policy_check(pkg: string, rel: string) -> string {
     if !is_safe_rel_path(rel) {
         return "unsafe path"
     }
-    if contains(rel, " ") || contains(rel, "\t") || contains(rel, "\n") || contains(rel, "|") {
+    set rel = norm_rel(rel)
+    if rel.len() == 0 {
+        return "unsafe path"
+    }
+    if contains(rel, " ") || contains(rel, "\t") || contains(rel, "\n") || contains(rel, "\r") || contains(rel, "|") {
         return "whitespace or | in a path"
     }
     if str_ends(rel, ".yuki-tmp") || str_ends(rel, ".yuki-new") || str_ends(rel, ".yuki-save") {
@@ -57,11 +75,15 @@ public fun policy_check(pkg: string, rel: string) -> string {
 
 // Checks both the symlink path and its resolved target with the policy_check rules.
 public fun policy_check_link(pkg: string, link_rel: string, target: string) -> string {
+    // Control characters in a target would corrupt line-based records too.
+    if contains(target, "\n") || contains(target, "\r") || contains(target, "\t") {
+        return "unsafe symlink target"
+    }
     set w1 = policy_check(pkg, link_rel)
     if w1.len() > 0 {
         return w1
     }
-    set resolved = resolve_link_target(link_rel, target)
+    set resolved = resolve_link_target(norm_rel(link_rel), target)
     if resolved.len() == 0 {
         return "unsafe symlink target"
     }

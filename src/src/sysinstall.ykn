@@ -42,11 +42,11 @@ fun sys_need_root() {
     }
 }
 
-fun flag(name: string) -> bool {
+public fun flag(name: string) -> bool {
     return eq(get_or(name, ""), "1")
 }
 
-fun ask(question: string, default_yes: bool) -> bool {
+public fun ask(question: string, default_yes: bool) -> bool {
     set hint = "[y/N]"
     if default_yes {
         rewrite hint = "[Y/n]"
@@ -196,7 +196,9 @@ fun collect(stage: string, ref nodes: PNode[], ref items: ApplyItem[]) -> int64 
             rewrite from = join2(dir, "pkg.tar.zst")
             rewrite origin = "source"
         }
-        if file_metadata(dir).is_symlink || !plain_file(from) {
+        // Every component of the layout must be a real directory: the untrusted
+        // child owns dl/ and could point a middle step at a root-owned tree.
+        if file_metadata(dl).is_symlink || file_metadata(join2(dl, "pkgs")).is_symlink || file_metadata(dir).is_symlink || !plain_file(from) {
             panic(err("unexpected artifact layout for " + name, 753, name))
         }
 
