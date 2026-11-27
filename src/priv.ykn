@@ -1,0 +1,130 @@
+// priv.ykn — privilege separation.
+// Network, untrusted parsing and builds run in a child process that
+// first moves into its own process group with setpgid(0, 0) and drops root:
+// setgroups(0) -> setgid -> setuid -> check that root cannot be regained -> no_new_privs.
+// The root part trusts nothing the child brought and re-verifies everything.
+
+load core.panic: panic
+load core.utils: cast
+load std.os.unix: kill, geteuid
+load std.fs.files: file_exists, file_read_text
+load std.strings: trim, parse_int, eq
+load .errors: err
+load .util: str_starts, sjoin, str_split
+
+cfun setgroups(size: c_size_t, list: ptr<c_uint>) -> c_int;
+cfun setgid(gid: c_uint) -> c_int;
+cfun setuid(uid: c_uint) -> c_int;
+cfun setpgid(pid: c_int, pgid: c_int) -> c_int;
+cfun sync() -> void;
+cfun prctl(option: c_int, a2: c_size_t, a3: c_size_t, a4: c_size_t, a5: c_size_t) -> c_int;
+
+public fun is_root() -> bool {
+    return geteuid() == 0
+}
+
+// Unprivileged user for the network and build phases.
+public fun nobody_id() -> c_uint {
+    static id: c_uint = 65534
+    return id
+}
+
+// Real kernel uid: first number of the "Uid:" line in /proc/self/status.
+// proot only fakes geteuid()'s return value; the process status stays honest.
+// On read error returns -1 (fail-closed for PRoot detection).
+fun real_uid() -> int64 {
+    static f = "/proc/self/status"
+    if !file_exists(f) {
+        return cast(geteuid(), "int64")
+    }
+    set text = ""
+    sus {
+        rewrite text = file_read_text(f)
+    } catch {
+        return -1
+    }
+    set ls = str_split(text, "\n")
+    for i in 0..ls.len() {
+        set line = ls[i]
+        if str_starts(line, "Uid:") {
+            set norm = sjoin(str_split(trim(line), "\t"), " ")
+            set fields = str_split(norm, " ")
+            for j in 0..fields.len() {
+                set p = trim(fields[j])
+                if p.len() > 0 && !eq(p, "Uid:") {
+                    return parse_int(p) ?? -1
+                }
+            }
+        }
+    }
+    return -1
+}
+
+// Privilege emulation (proot): geteuid()==0 while the kernel sees a regular user.
+// There setuid() changes nothing, and a global kill(-1) would kill the whole login session.
+public fun enc_is_proot() -> bool {
+    if geteuid() != 0 {
+        return false
+    }
+    // Fail-closed: proot only when the kernel EXPLICITLY reports a nonzero uid.
+    // When unclear, treat root as real and drop privileges.
+    return real_uid() > 0
+}
+
+public fun drop_privileges(uid: c_uint, gid: c_uint) {
+    if !is_root() {
+        return
+    }
+    if enc_is_proot() {
+        return
+    }
+    static zpid: c_int = 0
+    set _pg = setpgid(zpid, zpid)
+    static none: c_size_t = 0
+    set dummy: c_uint = 0
+    static zero: c_uint = 0
+    if setgroups(none, ptr_of(dummy)) != 0 {
+        panic(err("could not clear supplementary groups", 701, ""))
+    }
+    if setgid(gid) != 0 {
+        panic(err("could not drop the group", 701, ""))
+    }
+    if setuid(uid) != 0 {
+        panic(err("could not drop root", 701, ""))
+    }
+    if setuid(zero) == 0 {
+        panic(err("privileges could be regained, refusing to continue", 702, ""))
+    }
+    static a1: c_size_t = 1
+    static a0: c_size_t = 0
+    static opt: c_int = 38
+    if prctl(opt, a1, a0, a0, a0) != 0 {
+        panic(err("could not set PR_SET_NO_NEW_PRIVS", 701, ""))
+    }
+}
+
+// Kills the whole process group of the child worker (-child_pid) without touching
+// unrelated OS daemons running as the nobody user.
+public fun kill_child_group(child_pid: int64) {
+    if !is_root() || enc_is_proot() || child_pid <= 1 {
+        return
+    }
+    sus {
+        set _r = kill(cast(-child_pid, "int32"), 9)
+    } catch {
+        set _ign = 0
+    }
+}
+
+// Compatibility wrapper; must not issue a global kill(-1, 9) as nobody.
+public fun kill_all_as(uid: c_uint) {
+    if !is_root() || enc_is_proot() {
+        return
+    }
+    set _unused = uid
+}
+
+// Flushes filesystem buffers to disk: durability points of the transaction journal.
+public fun sync_disk() {
+    sync()
+}

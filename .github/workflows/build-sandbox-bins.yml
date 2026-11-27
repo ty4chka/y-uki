@@ -1,0 +1,60 @@
+name: Build Sandbox Binaries (linux-x86_64)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      YUKINO_RELEASEBUILD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: yukitsuri/yukino
+          ref: v0.1.1
+          path: yukino
+      - uses: actions/checkout@v4
+        with:
+          repository: yukitsuri/yukino-lsp
+          ref: 0.1.1
+          path: yukino-lsp
+      - name: Install LLVM 22
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm.sh -o "$RUNNER_TEMP/llvm.sh"
+          chmod +x "$RUNNER_TEMP/llvm.sh"
+          sudo "$RUNNER_TEMP/llvm.sh" 22
+          sudo apt-get install -y llvm-22-dev libpolly-22-dev libzstd-dev zlib1g-dev libffi-dev
+          echo "LLVM_SYS_221_PREFIX=/usr/lib/llvm-22" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-22/bin" >> "$GITHUB_PATH"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build Yukino compiler and CLI
+        working-directory: yukino
+        run: cargo build --locked --release --bin yukic --bin yukino
+      - name: Isolate LSP Cargo workspace
+        run: printf '\n[workspace]\n' >> yukino-lsp/Cargo.toml
+      - name: Build Yukino LSP
+        working-directory: yukino-lsp
+        run: cargo build --release --bin yukino-lsp
+      - name: Verify binaries and shared libraries
+        run: |
+          mkdir -p dist
+          install -m 755 yukino/target/release/yukic dist/yukic
+          install -m 755 yukino/target/release/yukino dist/yukino
+          install -m 755 yukino-lsp/target/release/yukino-lsp dist/yukino-lsp
+          file dist/*
+          for binary in dist/*; do echo "=== $binary ==="; ldd "$binary" || true; done
+          ./dist/yukic --version
+          ./dist/yukino --version
+          ./dist/yukino-lsp --version
+      - name: Package
+        run: tar -czf yukino-linux-x86_64.tar.gz -C dist .
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sandbox-bins
+          name: Sandbox Binaries (linux-x86_64, glibc 2.35)
+          files: yukino-linux-x86_64.tar.gz
+          make_latest: false
+          fail_on_unmatched_files: true

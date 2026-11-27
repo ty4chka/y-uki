@@ -1,0 +1,303 @@
+// util.ykn — time, name/version/hex validation.
+
+load std.datetime: now_utc, to_unix_secs, to_unix_millis
+load std.strings: split, lines, lower, pad_end, repeat, str_join, parse_int, slice, contains, eq
+// The current std returns T? (bool?/int64?) from these functions while the project
+// uses plain bool/int64. The wrappers give the old semantics: null -> false / -1.
+// IMPORTANT: wrapper names must NOT collide with std (str_*), otherwise the compiler
+// confuses them with the same-named std functions and the wrapper calls itself.
+load std.strings: starts_with, ends_with, index_of, index_of_from, last_index_of
+load std.fs: path_join
+
+public fun str_starts(s: string, prefix: string) -> bool {
+    set r: bool? = starts_with(s, prefix)
+    return r ?? false
+}
+
+public fun str_ends(s: string, suffix: string) -> bool {
+    set r: bool? = ends_with(s, suffix)
+    return r ?? false
+}
+
+// index of the first occurrence starting at from_idx, or -1
+public fun str_index_from(s: string, sub: string, from_idx: int64) -> int64 {
+    set r: int64? = index_of_from(s, sub, from_idx)
+    return r ?? -1
+}
+
+// path_join from std is variadic; on two arguments it sometimes fails type checking
+public fun join2(a: string, b: string) -> string {
+    return path_join(a, b)
+}
+
+// index of the first occurrence or -1
+public fun str_index(s: string, sub: string) -> int64 {
+    set r: int64? = index_of(s, sub)
+    return r ?? -1
+}
+
+// index of the last occurrence or -1
+public fun str_last_index(s: string, sub: string) -> int64 {
+    set r: int64? = last_index_of(s, sub)
+    return r ?? -1
+}
+
+public fun now_secs() -> int64 {
+    set t = now_utc()
+    return to_unix_secs(ref t)
+}
+
+public fun now_ms() -> int64 {
+    set t = now_utc()
+    return to_unix_millis(ref t)
+}
+
+public fun is_hex(s: string) -> bool {
+    if s.len() == 0 {
+        return false
+    }
+    for i in 0..s.len() {
+        if !contains("0123456789abcdefABCDEF", slice(s, i, i + 1)) {
+            return false
+        }
+    }
+    return true
+}
+
+// [a-z0-9_-], 1..64 chars, must not start with - or _
+public fun valid_name(name: string) -> bool {
+    if name.len() == 0 || name.len() > 64 {
+        return false
+    }
+    if contains("-_", slice(name, 0, 1)) {
+        return false
+    }
+    for i in 0..name.len() {
+        if !contains("abcdefghijklmnopqrstuvwxyz0123456789_-", slice(name, i, i + 1)) {
+            return false
+        }
+    }
+    return true
+}
+
+// strict MAJOR.MINOR.PATCH, digits only
+public fun valid_version(v: string) -> bool {
+    if v.len() == 0 || v.len() > 32 {
+        return false
+    }
+    set parts = str_split(v, ".")
+    if parts.len() != 3 {
+        return false
+    }
+    for i in 0..3 {
+        if !is_hex(parts[i]) {
+            return false
+        }
+        set n = parse_int(parts[i])
+        if n == null {
+            return false
+        }
+    }
+    return true
+}
+
+// Number from a digit string without parse_int (0-9 only; anything else counts as 0).
+public fun digits_val(s: string) -> int64 {
+    set v: int64 = 0
+    for i in 0..s.len() {
+        set d: int64 = 0
+        for k in 0..10 {
+            if eq(slice("0123456789", k, k + 1), slice(s, i, i + 1)) {
+                rewrite d = k
+            }
+        }
+        rewrite v = v * 10 + d
+    }
+    return v
+}
+
+// 1 if a > b, -1 if a < b, 0 if equal. Call only after valid_version.
+public fun ver_cmp(a: string, b: string) -> int64 {
+    set pa = str_split(a, ".")
+    set pb = str_split(b, ".")
+    set r: int64 = 0
+    for i in 0..3 {
+        if r == 0 {
+            set x: int64 = digits_val(pa[i])
+            set y: int64 = digits_val(pb[i])
+            if x > y {
+                rewrite r = 1
+            } elif x < y {
+                rewrite r = 0 - 1
+            }
+        }
+    }
+    return r
+}
+
+// "name@1.2.3" — dependency with an exact version pin
+public fun valid_dep_spec(s: string) -> bool {
+    set p = str_split(s, "@")
+    return p.len() == 2 && valid_name(p[0]) && valid_version(p[1])
+}
+
+public fun dep_name(s: string) -> string {
+    return str_split(s, "@")[0] + ""
+}
+
+public fun dep_version(s: string) -> string {
+    return str_split(s, "@")[1] + ""
+}
+
+// For the "did you mean" hint: number of edits between words.
+public fun edit_distance(a: string, b: string) -> int64 {
+    set prev: int64[] = []
+    for j in 0..(b.len() + 1) {
+        prev.push(j)
+    }
+    for i in 1..(a.len() + 1) {
+        set cur: int64[] = []
+        cur.push(i)
+        for j in 1..(b.len() + 1) {
+            set cost: int64 = 1
+            if eq(slice(a, i - 1, i), slice(b, j - 1, j)) {
+                rewrite cost = 0
+            }
+            set best = prev[j] + 1
+            if cur[j - 1] + 1 < best {
+                rewrite best = cur[j - 1] + 1
+            }
+            if prev[j - 1] + cost < best {
+                rewrite best = prev[j - 1] + cost
+            }
+            cur.push(best)
+        }
+        rewrite prev = cur
+    }
+    return prev[b.len()]
+}
+
+// Copying wrappers over std.strings.
+// std split/lines/lower/pad_end/repeat/str_join return a pointer to ONE shared
+// streaming buffer: the next call overwrites the previous result (eq(lower(a), lower(b))
+// is always true, two live splits corrupt each other). Here the result is copied at once
+// into the caller region: arrays via .cp(), strings via concatenation.
+public fun str_split(s: string, delim: string) -> string[] {
+    set r: string[] = split(s, delim)
+    return r.cp()
+}
+
+// split into at most n parts: the last part keeps the remaining delimiters
+public fun str_split_n(s: string, delim: string, n: int64) -> string[] {
+    set r: string[] = split(s, delim)
+    if n <= 0 || r.len() <= n {
+        return r.cp()
+    }
+    set out: string[] = []
+    for i in 0..n - 1 {
+        out.push(r[i] + "")
+    }
+    set tail = r[n - 1] + ""
+    for i in n..r.len() {
+        rewrite tail = tail + delim + (r[i] + "")
+    }
+    out.push(tail + "")
+    return out
+}
+
+public fun str_lines(s: string) -> string[] {
+    set r: string[] = lines(s)
+    return r.cp()
+}
+
+public fun str_lower(s: string) -> string {
+    set r: string = lower(s)
+    return r + ""
+}
+
+public fun str_pad_end(s: string, width: int64, pad: string = " ") -> string {
+    set r: string = pad_end(s, width, pad)
+    return r + ""
+}
+
+public fun str_repeat(s: string, n: int64) -> string {
+    set r: string = repeat(s, n)
+    return r + ""
+}
+
+public fun sjoin(items: string[], delim: string = "") -> string {
+    set r: string = str_join(items, delim)
+    return r + ""
+}
+
+// 1 -> "package", else "packages" — one plural form for all summaries.
+public fun plural(n: int64, one: string, many: string) -> string {
+    if n == 1 {
+        return one
+    }
+    return many
+}
+
+// Workaround for an aarch64 codegen bug: cast(N -> "string") segfaults (§repro 9-13).
+// All numeric -> string conversions in yuki go through these functions until the compiler bug is fixed.
+
+fun digit_str(d: int64) -> string {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    return "9"
+}
+
+// int64 -> string, digits in the right order, minus for negatives.
+public fun int_str(n: int64) -> string {
+    if n == 0 { return "0" }
+    set neg = false
+    set v: int64 = n
+    if v < 0 {
+        rewrite neg = true
+        rewrite v = 0 - v
+    }
+    set out = ""
+    loop {
+        rewrite out = digit_str(v % 10) + out
+        rewrite v = v / 10
+        if v == 0 { break }
+    }
+    if neg {
+        rewrite out = "-" + out
+    }
+    return out
+}
+
+// Human-readable byte sizes (replaces std.stdotool.format.format_bytes,
+// which internally goes through the broken int->string).
+public fun fmt_bytes(n: int64) -> string {
+    if n < 1024 {
+        return int_str(n) + " B"
+    }
+    set v: int64 = n
+    static units: string[] = ["KiB", "MiB", "GiB", "TiB"]
+    set ui: int64 = 0
+    set rest: int64 = 0
+    loop {
+        rewrite rest = v % 1024
+        rewrite v = v / 1024
+        if v < 1024 || ui >= 3 {
+            break
+        }
+        rewrite ui += 1
+    }
+    set tenth: int64 = (rest * 10) / 1024
+    return int_str(v) + "." + int_str(tenth) + " " + units[ui]
+}
+
+// Human-readable speed (replaces format_speed).
+public fun fmt_speed(bytes_per_sec: int64) -> string {
+    return fmt_bytes(bytes_per_sec) + "/s"
+}

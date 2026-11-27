@@ -1,0 +1,507 @@
+// index.ykn — the signed git index.
+//
+// Index repository layout:
+//   index/<aa>/<bb>/<name>.json       package record
+//   index/<aa>/<bb>/<name>.json.sig   Ed25519 signature (hex) over "yuki-v1\n" + file bytes
+//
+// {
+//   "name": "json-yukino",
+//   "kind": "lib",             // "lib" (source only) or "app"
+//   "seq": 12,                 // grows on every change: rollback protection
+//   "expires": 1798761600,     // unix seconds: protection against a frozen index
+//   "versions": [
+//     { "version": "1.2.0", "yanked": false,
+//       "src": { "url": "https://github.com/o/r/archive/<commit>.tar.gz",
+//                "checksum": "blake3:<64 hex>", "build": ["yukino", "build", "release"] },
+//       "deps": ["ansi-kit@2.0.1", "tomlkit@0.4.0"] },    // versions are pinned exactly
+//     { "version": "2.0.0", "yanked": false,              // apps also carry binaries
+//       "bin": { "x86_64-unknown-linux-gnu": { "url": "https://...", "checksum": "blake3:<64 hex>" } },
+//       "deps": [] }
+//   ]
+// }
+//
+// The client fetches only the needed record over HTTPS (sparse); cloning the
+// index is not required.
+
+load core.panic: panic
+load std.json: json_parse, json_stringify
+load std.outf: strip_ansi
+load std.strings: eq, trim, slice, parse_int, contains
+load std.hash: blake3_str
+load std.fs.files: file_exists, file_read_text, file_write_text, file_rename
+load .errors: YukiError, err
+load .config: index_urls, state_dir, ensure_dirs, host_target, MAX_INDEX_FILE
+load .fetch: http_text, check_url
+load .trust: trusted_keys, trusted_roles, publish_threshold, fingerprint
+load .verify: VerifyError, verify_text, checksum_ok_format, is_safe_rel_path
+load .util: valid_name, valid_version, ver_cmp, now_secs, valid_dep_spec, join2, sjoin, str_lines, str_lower, str_pad_end, str_split, int_str
+
+// One resolved release of a package, ready for install or display.
+public struct Release {
+    name: string
+    version: string
+    url: string
+    checksum: string
+    seq: int64
+    signer: string
+    deps: string[]
+    kind: string
+    bin_url: string
+    bin_checksum: string
+    src_url: string
+    src_checksum: string
+    src_net: bool
+    build: string[]
+    files: string[]
+    summary: string
+    homepage: string
+    license: string
+}
+
+// Result of wrapper-signature verification: the trusted key that signed the
+// wrapper and the publisher keys whose signatures cover it.
+public struct Signed {
+    who: int64
+    pubs: string[]
+}
+
+// A downloaded index record with its detached signature text.
+public struct EntryText {
+    text: string
+    sig: string
+}
+
+// Returns the two-level index directory for a package name, e.g. "js/on".
+// Short names are padded with underscores so the path is always two levels deep.
+public fun entry_dir(name: string) -> string {
+    set a = str_pad_end(slice(name, 0, 2), 2, "_")
+    set b = str_pad_end(slice(name, 2, 4), 2, "_")
+    return "index/" + a + "/" + b
+}
+
+// Returns the repository-relative path of the record file for a package name.
+public fun entry_rel(name: string) -> string {
+    return entry_dir(name) + "/" + name + ".json"
+}
+
+// Anti-rollback state: <state>/seen, lines "<name> <seq> [<blake3>]". The
+// optional third field is the blake3 of the accepted document text, so a
+// re-fetch at the same seq can be accepted only when the content is identical.
+
+fun seen_path() -> string {
+    return join2(state_dir(), "seen")
+}
+
+// Returns the highest seq recorded for name, or 0 when nothing was recorded.
+public fun seen_get(name: string) -> int64 {
+    set f = seen_path()
+    if !file_exists(f) {
+        return 0
+    }
+    set ls = str_lines(file_read_text(f))
+    for i in 0..ls.len() {
+        set p = str_split(trim(ls[i]), " ")
+        if p.len() >= 2 && eq(p[0], name) {
+            return parse_int(p[1]) ?? 0
+        }
+    }
+    return 0
+}
+
+// Returns the content hash stored for name, or "" when none was recorded.
+// Reads the same record line as seen_get so both always agree.
+public fun seen_hash(name: string) -> string {
+    set f = seen_path()
+    if !file_exists(f) {
+        return ""
+    }
+    set ls = str_lines(file_read_text(f))
+    for i in 0..ls.len() {
+        set p = str_split(trim(ls[i]), " ")
+        if p.len() >= 2 && eq(p[0], name) {
+            if p.len() >= 3 {
+                return p[2]
+            }
+            return ""
+        }
+    }
+    return ""
+}
+
+// Records the accepted seq (and, when non-empty, the content hash) for name.
+// Only the privileged side may call this; the unprivileged loader must not.
+public fun seen_set(name: string, seq: int64, content_hash: string = "") {
+    ensure_dirs()
+    set f = seen_path()
+    // Atomic replacement: write to a temporary file and rename it into place.
+    // A half-written seen file after a crash would zero the anti-rollback memory (P0).
+    set tmp = f + ".tmp"
+    set out: string[] = []
+    set found = false
+    set line = name + " " + int_str(seq)
+    if content_hash.len() > 0 {
+        rewrite line = line + " " + content_hash
+    }
+    if file_exists(f) {
+        set ls = str_lines(file_read_text(f))
+        for i in 0..ls.len() {
+            set p = str_split(trim(ls[i]), " ")
+            if p.len() >= 2 {
+                if eq(p[0], name) {
+                    out.push(line)
+                    rewrite found = true
+                } else {
+                    out.push(trim(ls[i]))
+                }
+            }
+        }
+    }
+    if !found {
+        out.push(line)
+    }
+    file_write_text(tmp, sjoin(out, "\n") + "\n")
+    file_rename(tmp, f)
+}
+
+fun entry_url_ok(url: string) -> bool {
+    if contains(url, "\"") {
+        return false
+    }
+    sus {
+        check_url(url)
+    } catch {
+        return false
+    }
+    return true
+}
+
+// Fetches an index file from the first mirror that responds; signatures are
+// verified later and are mirror-independent. Panics with YukiError (404) when
+// every mirror fails.
+public fun index_get(rel: string, max_bytes: int64) -> string {
+    return index_get_from(index_urls(), rel, max_bytes, 0, "")
+}
+
+// Mirror iteration as recursion so every path returns explicitly: a loop that
+// ends in a tail panic trips the tooling flow analysis. why keeps the last
+// mirror failure for the exhaustion error.
+fun index_get_from(urls: string[], rel: string, max_bytes: int64, i: int64, why: string) -> string {
+    if i >= urls.len() {
+        panic(err("all index mirrors failed: " + why, 404, rel))
+    }
+    set got = ""
+    set okk = false
+    sus {
+        rewrite got = http_text(urls[i] + "/" + rel, max_bytes)
+        rewrite okk = true
+    } catch e: YukiError {
+        rewrite why = e.message
+    } catch {
+        rewrite why = errkind
+    }
+    if okk {
+        return got
+    }
+    return index_get_from(urls, rel, max_bytes, i + 1, why)
+}
+
+// Downloads a record and its signature (network only, no verification).
+// Panics with YukiError (201/404) on an invalid name or fetch failure.
+public fun fetch_entry(name: string) -> EntryText {
+    if !valid_name(name) {
+        panic(err("invalid package name: " + name, 201, name))
+    }
+    set rel_path = entry_rel(name)
+    set text = index_get(rel_path, MAX_INDEX_FILE)
+    set sig = index_get(rel_path + ".sig", 4096)
+    return EntryText { text: text, sig: sig }
+}
+
+// Finds a release. want == "" selects the newest release that is not yanked.
+// Panics with YukiError or VerifyError when the record cannot be trusted.
+public fun resolve(name: string, want: string) -> Release {
+    set e = fetch_entry(name)
+    return resolve_text(name, want, e.text, e.sig, true)
+}
+
+// Sanitizes a package description for display: one line without control
+// characters, limited to max characters.
+fun clean_text(s: string, max: int64) -> string {
+    set one = str_split(strip_ansi(s), "\n")[0]
+    if one.len() > max {
+        return slice(one, 0, max)
+    }
+    return one
+}
+
+fun index_of_key(ref keys: string[], pub: string) -> int64 {
+    for i in 0..keys.len() {
+        if eq(keys[i], pub) {
+            return i
+        }
+    }
+    return -1
+}
+
+fun has(ref l: string[], x: string) -> bool {
+    for i in 0..l.len() {
+        if eq(l[i], x) {
+            return true
+        }
+    }
+    return false
+}
+
+// Step 1 (before JSON parsing): the wrapper signature. The .sig file holds
+// lines "<pubkey> <sig>" or a single legacy "<sig>" line. Returns the index of
+// the signing key and the publisher keys covering the wrapper; panics with
+// VerifyError when no trusted key signed it.
+fun verify_wrapper(text: string, sigtext: string, ref keys: string[], ref roles: string[], rel_path: string) -> Signed {
+    set who: int64 = -1
+    set pubs: string[] = []
+    set ls = str_lines(sigtext)
+    for i in 0..ls.len() {
+        set parts = str_split(trim(ls[i]), " ")
+        if parts.len() == 2 {
+            set pub = str_lower(parts[0])
+            set idx = index_of_key(ref keys, pub)
+            if idx >= 0 && verify_text(pub, text, parts[1]) {
+                if who < 0 {
+                    rewrite who = idx
+                }
+                if eq(roles[idx], "publisher") && !has(ref pubs, pub) {
+                    pubs.push(pub)
+                }
+            }
+        } elif parts.len() == 1 && parts[0].len() == 128 {
+            for k in 0..keys.len() {
+                if verify_text(keys[k], text, parts[0]) {
+                    if who < 0 {
+                        rewrite who = k
+                    }
+                    if eq(roles[k], "publisher") && !has(ref pubs, keys[k]) {
+                        pubs.push(keys[k])
+                    }
+                }
+            }
+        }
+    }
+    if who < 0 {
+        panic(VerifyError {
+            message: "index entry is not signed by any trusted key",
+            code: 3,
+            path: rel_path,
+        })
+    }
+    return Signed { who: who, pubs: pubs }
+}
+
+// Step 2: the content (versions) must be confirmed by a sufficient number of
+// PUBLISHERS. A renewer key may sign the wrapper (the expiry) but not the content.
+// Panics with VerifyError when too few publisher signatures cover the content.
+fun verify_content(doc: JsonValue, ref keys: string[], ref roles: string[], ref ~pubs: string[], rel_path: string) {
+    set vtext = "content\n" + json_stringify(doc.get("versions"))
+    set cs = doc.get("content_sigs")
+    for i in 0..cs.len() {
+        set pub = str_lower(cs.at(i).get("key").as_string_or(""))
+        set sig = cs.at(i).get("sig").as_string_or("")
+        set idx = index_of_key(ref keys, pub)
+        if idx >= 0 && eq(roles[idx], "publisher") && !has(ref pubs, pub) && verify_text(pub, vtext, sig) {
+            pubs.push(pub)
+        }
+    }
+    set need = publish_threshold()
+    if pubs.len() < need {
+        panic(VerifyError {
+            message: "needs " + int_str(need) + " publisher signature(s) on the releases, found " + int_str(pubs.len()) + " (a renewer key cannot approve content)",
+            code: 3,
+            path: rel_path,
+        })
+    }
+}
+
+fun safe_token(s: string) -> bool {
+    if s.len() == 0 || s.len() > 256 {
+        return false
+    }
+    return !contains(s, "\n") && !contains(s, "\r") && !contains(s, "\0")
+}
+
+// Full record check: signature, name, expiry, rollback, release selection,
+// field formats. Operates on the passed text so the privileged side can
+// re-verify unprivileged fetches. record == true stores the seq (rollback
+// protection); the unprivileged phase must not. Panics with YukiError or
+// VerifyError on any violation.
+public fun resolve_text(name: string, want: string, text: string, sig: string, record: bool) -> Release {
+    if !valid_name(name) {
+        panic(err("invalid package name: " + name, 201, name))
+    }
+    set rel_path = entry_rel(name)
+    set keys = trusted_keys()
+    if keys.len() == 0 {
+        panic(err("no trusted keys yet: add one with `yuki keys trust <name> <pubkey>`", 202, rel_path))
+    }
+
+    set roles = trusted_roles()
+    set sg = verify_wrapper(text, sig, ref keys, ref roles, rel_path)
+    set who = sg.who
+    set pubs = sg.pubs
+
+    set doc = json_parse(text)
+    verify_content(doc.cp(), ref keys, ref roles, ref ~pubs, rel_path)
+    if !eq(doc.get("name").as_string(), name) {
+        panic(err("index entry belongs to a different package", 203, rel_path))
+    }
+    set seq = doc.get("seq").as_int()
+    set expires = doc.get("expires").as_int()
+    if expires < now_secs() {
+        panic(err("index entry has expired (stale or frozen index)", 204, rel_path))
+    }
+    // Anti-rollback, seq vs the recorded state: an older seq is refused, and
+    // at an equal seq the content must match the stored hash. A legacy record
+    // without a stored hash is accepted and backfilled by the seen_set below.
+    set prev = seen_get(name)
+    if seq < prev {
+        panic(err("index entry is older than one already seen (rollback attack?)", 205, rel_path))
+    }
+    set content_hash = blake3_str(text)
+    set stored_hash = seen_hash(name)
+    if seq == prev && stored_hash.len() > 0 && !eq(content_hash, stored_hash) {
+        panic(err("index entry changed at the same seq (rollback attack?)", 205, rel_path))
+    }
+    set kind = doc.get("kind").as_string_or("lib")
+    if !eq(kind, "lib") && !eq(kind, "app") {
+        panic(err("unknown package kind: " + kind, 218, rel_path))
+    }
+
+    set versions = doc.get("versions")
+    set best: int64 = -1
+    for i in 0..versions.len() {
+        if versions.at(i).get("yanked").as_bool_or(false) {
+            continue
+        }
+        set ver = versions.at(i).get("version").as_string()
+        if !valid_version(ver) {
+            continue
+        }
+        if want.len() > 0 {
+            if eq(ver, want) {
+                rewrite best = i
+            }
+        } elif best < 0 {
+            rewrite best = i
+        } elif ver_cmp(ver, versions.at(best).get("version").as_string()) > 0 {
+            rewrite best = i
+        }
+    }
+    if best < 0 {
+        panic(err("no matching release (missing or yanked): " + name + " " + want, 206, rel_path))
+    }
+
+    set url = versions.at(best).get("url").as_string_or("")
+    set checksum = versions.at(best).get("checksum").as_string_or("")
+    if kind == "lib" {
+        // libraries are source-only: a lib entry carries no prebuilt artifacts
+        if url.len() > 0 || versions.at(best).get("bin").len() > 0 {
+            panic(err("libraries are source-only: prebuilt artifacts are not allowed", 219, rel_path))
+        }
+    }
+
+    // ready-made build for this platform
+    set bin_url = versions.at(best).get("bin").get(host_target()).get("url").as_string_or("")
+    set bin_sum = versions.at(best).get("bin").get(host_target()).get("checksum").as_string_or("")
+    if bin_url.len() > 0 && (!entry_url_ok(bin_url) || !checksum_ok_format(bin_sum)) {
+        panic(err("binary release has a bad URL or checksum", 219, rel_path))
+    }
+
+    // sources: the archive, the build command and the explicit list of files
+    // that end up in the package
+    set src = versions.at(best).get("src")
+    set src_url = src.get("url").as_string_or("")
+    set src_sum = src.get("checksum").as_string_or("")
+    set src_net = src.get("net").as_bool_or(false)
+    set build: string[] = []
+    set files: string[] = []
+    if src_url.len() > 0 {
+        if !entry_url_ok(src_url) || !checksum_ok_format(src_sum) {
+            panic(err("source release has a bad URL or checksum", 219, rel_path))
+        }
+        set bl = src.get("build")
+        if !eq(kind, "lib") && (bl.len() == 0 || bl.len() > 16) {
+            panic(err("source release needs 1-16 build arguments", 220, rel_path))
+        }
+        for k in 0..bl.len() {
+            set a = bl.at(k).as_string()
+            if !safe_token(a) {
+                panic(err("malformed build argument", 220, rel_path))
+            }
+            build.push(a)
+        }
+        set fl = src.get("files")
+        if !eq(kind, "lib") && (fl.len() == 0 || fl.len() > 256) {
+            panic(err("source release needs 1-256 packaged files", 221, rel_path))
+        }
+        for k in 0..fl.len() {
+            set from = fl.at(k).get("from").as_string_or("")
+            set to = fl.at(k).get("to").as_string_or("")
+            set mode = fl.at(k).get("mode").as_string_or("644")
+            if !is_safe_rel_path(from) || !is_safe_rel_path(to) || contains(from, "|") || contains(to, "|") {
+                panic(err("unsafe path in the packaged files list", 221, rel_path))
+            }
+            if !eq(mode, "644") && !eq(mode, "755") {
+                panic(err("file mode must be 644 or 755", 221, rel_path))
+            }
+            set fh = fl.at(k).get("blake3").as_string_or("")
+            if fh.len() > 0 && !checksum_ok_format(fh) {
+                panic(err("malformed blake3 in the packaged files list", 221, rel_path))
+            }
+            files.push(from + "|" + to + "|" + mode + "|" + fh)
+        }
+    }
+
+    if kind == "lib" && src_url.len() == 0 {
+        panic(err("libraries are source-only: a src block is required", 219, rel_path))
+    }
+    if kind == "lib" {
+        // the dependency link of a library is its source archive: built from source in the project
+        rewrite url = src_url
+        rewrite checksum = src_sum
+    }
+
+    set deps: string[] = []
+    set dl = versions.at(best).get("deps")
+    if dl.len() > 64 {
+        panic(err("release declares too many dependencies", 214, rel_path))
+    }
+    for k in 0..dl.len() {
+        set d = dl.at(k).as_string()
+        if !valid_dep_spec(d) {
+            panic(err("release has a malformed dependency: " + d, 214, rel_path))
+        }
+        deps.push(d)
+    }
+
+    if record {
+        seen_set(name, seq, content_hash)
+    }
+    return Release {
+        name: name,
+        version: versions.at(best).get("version").as_string(),
+        url: url,
+        checksum: checksum,
+        seq: seq,
+        signer: fingerprint(keys[who]),
+        deps: deps,
+        kind: kind,
+        bin_url: bin_url,
+        bin_checksum: bin_sum,
+        src_url: src_url,
+        src_checksum: src_sum,
+        src_net: src_net,
+        build: build,
+        files: files,
+        summary: clean_text(doc.get("summary").as_string_or(""), 120),
+        homepage: clean_text(doc.get("homepage").as_string_or(""), 200),
+        license: clean_text(doc.get("license").as_string_or(""), 40),
+    }
+}

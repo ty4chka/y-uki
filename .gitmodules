@@ -1,0 +1,6 @@
+[submodule "toolchain/yukino"]
+	path = toolchain/yukino
+	url = https://github.com/yukitsuri/yukino.git
+[submodule "toolchain/yukino-lsp"]
+	path = toolchain/yukino-lsp
+	url = https://github.com/yukitsuri/yukino-lsp.git

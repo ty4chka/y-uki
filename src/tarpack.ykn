@@ -1,0 +1,214 @@
+// tarpack.ykn — tar(.zst/.gz) packer for `yuki pack` and source builds.
+// Constraints: relative names, directory entries, real file mode (rwx only),
+// streaming copies, no setuid/setgid, mtime = 0 (reproducible hash),
+// guaranteed descriptor closing via defer.
+
+load core.utils: cast
+load core.panic: panic
+load std.fs.files: file_open_read, file_open_write, file_metadata, file_exists, file_read_text, file_remove
+load std.fs.dirs: dir_exists, dir_walk, dir_create_all, dir_remove_all
+load std.fs.defaults: dir_temp
+load std.fs.archives.tar: tar_list, tar_unpack
+load std.compress: compress_file
+load std.strings: slice, eq
+load .errors: err
+load .util: str_starts, str_ends, str_index, str_last_index, join2, int_str, now_ms
+load .verify: is_safe_rel_path
+
+// Octal number exactly `digits` wide (zero-padded).
+fun oct_str(val: int64, digits: int64) -> string {
+    set res = ""
+    set v: int64 = val
+    for i in 0..digits {
+        set d: int64 = v % 8
+        rewrite res = slice("01234567", d, d + 1) + res
+        rewrite v = v / 8
+    }
+    return res
+}
+
+// One ustar header (512 bytes).
+fun tar_header(ref out: File, name: string, size: int64, mode: int64, is_dir: bool) {
+    set hdr: uint8[512]
+    set nb: bytes = cast(name, "bytes")
+    for i in 0..nb.len() {
+        rewrite hdr[i] = nb[i]
+    }
+    set mb: bytes = cast(oct_str(mode, 7), "bytes")
+    for i in 0..mb.len() {
+        rewrite hdr[100 + i] = mb[i]
+    }
+    set zb: bytes = cast("0000000", "bytes")
+    for i in 0..zb.len() {
+        rewrite hdr[108 + i] = zb[i]
+        rewrite hdr[116 + i] = zb[i]
+    }
+    set sb: bytes = cast(oct_str(size, 11), "bytes")
+    for i in 0..sb.len() {
+        rewrite hdr[124 + i] = sb[i]
+    }
+    set tb: bytes = cast("00000000000", "bytes")
+    for i in 0..tb.len() {
+        rewrite hdr[136 + i] = tb[i]
+    }
+    for i in 0..8 {
+        rewrite hdr[148 + i] = 32u8
+    }
+    if is_dir {
+        rewrite hdr[156] = 53u8
+    } else {
+        rewrite hdr[156] = 48u8
+    }
+    rewrite hdr[257] = 117u8
+    rewrite hdr[258] = 115u8
+    rewrite hdr[259] = 116u8
+    rewrite hdr[260] = 97u8
+    rewrite hdr[261] = 114u8
+    rewrite hdr[262] = 0u8
+    rewrite hdr[263] = 48u8
+    rewrite hdr[264] = 48u8
+    set sum: int64 = 0
+    for i in 0..512 {
+        rewrite sum = sum + cast(hdr[i], "int64")
+    }
+    set cb: bytes = cast(oct_str(sum, 6), "bytes")
+    for i in 0..cb.len() {
+        rewrite hdr[148 + i] = cb[i]
+    }
+    rewrite hdr[154] = 0u8
+    rewrite hdr[155] = 32u8
+    out.write(hdr.as_ptr(), 512)
+}
+
+fun pack_raw_tar(raw: string, root: string) {
+    set out = file_open_write(raw)
+    defer { out.close() }
+    set all: string[] = dir_walk(root).cp()
+    set prefix: string = root + "/"
+    set buf: uint8[16384]
+    set zeros: uint8[1024]
+    for i in 0..all.len() {
+        set p: string = all[i]
+        if !str_starts(p, prefix) {
+            continue
+        }
+        set rel: string = slice(p, prefix.len(), p.len())
+        if rel.len() == 0 {
+            continue
+        }
+        if rel.len() > 99 {
+            panic(err("path is too long for the archive (max 99 bytes): " + rel, 723, rel))
+        }
+        set md = file_metadata(p)
+        if md.is_symlink {
+            panic(err("symlinks are not allowed in a package: " + rel, 722, rel))
+        }
+        if md.is_dir {
+            tar_header(ref out, rel + "/", 0, 493, true)
+        } elif md.is_file {
+            set perm: int64 = cast(md.mode, "int64") % 512
+            tar_header(ref out, rel, md.size, perm, false)
+            set src = file_open_read(p)
+            defer { src.close() }
+            set left: int64 = md.size
+            while left > 0 {
+                set n: int64 = src.read(buf.as_ptr(), 16384)
+                if n <= 0 {
+                    break
+                }
+                if n > left {
+                    rewrite n = left
+                }
+                out.write(buf.as_ptr(), n)
+                rewrite left = left - n
+            }
+            if left != 0 {
+                panic(err("file changed while packing: " + rel, 724, rel))
+            }
+            set pad: int64 = (512 - (md.size % 512)) % 512
+            if pad > 0 {
+                out.write(zeros.as_ptr(), pad)
+            }
+        }
+    }
+    out.write(zeros.as_ptr(), 1024)
+}
+
+// Packs directory root into archive. The extension picks compression: .tar.zst, .tar.gz/.tgz or none.
+public fun tar_pack_tree(archive: string, root_in: string) {
+    set root: string = root_in
+    while root.len() > 1 && str_ends(root, "/") {
+        rewrite root = slice(root, 0, root.len() - 1)
+    }
+    if !dir_exists(root) {
+        panic(err("directory not found: " + root, 501, root))
+    }
+    set zst: bool = str_ends(archive, ".tar.zst")
+    set gz: bool = str_ends(archive, ".tar.gz") || str_ends(archive, ".tgz")
+    set raw: string = archive
+    if zst || gz {
+        rewrite raw = archive + ".tmp.tar"
+    }
+    pack_raw_tar(raw, root)
+    if zst {
+        compress_file(raw, archive, "zstd")
+        file_remove(raw)
+    } elif gz {
+        compress_file(raw, archive, "gz")
+        file_remove(raw)
+    }
+}
+
+// Text of one regular file of the archive, or "" when it is missing. The
+// archive is unpacked into a scratch directory (callers audit it first), the
+// file is read back and the scratch is removed.
+fun tar_file_text(archive: string, rel: string) -> string {
+    set scratch = join2(dir_temp(), "yuki-inspect-" + int_str(now_ms()))
+    dir_create_all(scratch)
+    tar_unpack(archive, scratch)
+    set out = ""
+    set p = join2(scratch, rel)
+    if file_exists(p) {
+        set md = file_metadata(p)
+        if md.is_file && !md.is_symlink {
+            if md.size <= 65536 {
+                rewrite out = file_read_text(p)
+            } else {
+                rewrite out = "(build.ykn is " + int_str(md.size) + " bytes: review it in the archive yourself)"
+            }
+        }
+    }
+    dir_remove_all(scratch)
+    return out
+}
+
+// The build script a source archive carries, or "" when it has none: either at
+// the archive root or inside a single wrapper folder (the GitHub archive
+// convention that source_root unwraps before building).
+public fun build_script_of(archive: string) -> string {
+    set ents = tar_list(archive)
+    set top = ""
+    set wrapped = ""
+    for i in 0..ents.len() {
+        set p = ents[i].path
+        if str_starts(p, "./") {
+            rewrite p = slice(p, 2, p.len())
+        }
+        if !is_safe_rel_path(p) {
+            continue
+        }
+        if eq(p, "build.ykn") {
+            rewrite top = p
+        }
+        if str_ends(p, "/build.ykn") && str_index(p, "/") == str_last_index(p, "/") {
+            rewrite wrapped = p
+        }
+    }
+    if top.len() > 0 {
+        return tar_file_text(archive, top)
+    }
+    if wrapped.len() > 0 {
+        return tar_file_text(archive, wrapped)
+    }
+    return ""
+}
