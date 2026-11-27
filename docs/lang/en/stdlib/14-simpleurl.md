@@ -1,5 +1,7 @@
 # Module std.simpleurl
 
+> **English** · [Русский](../../ru/stdlib/14-simpleurl.md)
+
 The `std.simpleurl` module provides a high-level suite for parsing, validating, building, modifying, and encoding Uniform Resource Locators (URLs) in compliance with RFC 3986. The module includes a full URL parser, percent-encoding utilities, query parameter inspection and mutation, path normalization and joining, and a fluent `UrlBuilder`.
 
 ---

@@ -1,5 +1,7 @@
 # Toolchain and Project Structure
 
+> **English** · [Русский](../ru/2-cli-project.md)
+
 The `yukino` CLI project manager handles the lifecycle of applications and libraries: it initializes templates, manages the `yuki.toml` manifest, resolves local, Git, and archive dependencies, tracks locks in `yuki.lock`, compiles `build.ykn` pre-build scripts, and coordinates the low-level `yukic` compiler.
 
 ---

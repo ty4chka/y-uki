@@ -9,14 +9,13 @@
 // high findings block the install unless YUKI_ALLOW_RISKY=1 opts out deliberately.
 
 load core.panic: panic
-load core.utils: cast
 load std.io: println
 load std.fs.files: file_read_text, file_metadata
 load std.fs.dirs: dir_list, dir_exists
 load std.fs.paths: path_file_name
 load std.strings: eq, contains
-load .errors: YukiError, err
-load .ui: ok, info, warn, bad, card, c_accent, c_good, c_bad, c_dim, c_warn, c_bold
+load .errors: err
+load .ui: ok, info, warn, card, c_accent, c_bad, c_dim, c_warn, c_bold
 load .theme: sym
 load .util: str_starts, join2, str_lower, str_pad_end, int_str
 

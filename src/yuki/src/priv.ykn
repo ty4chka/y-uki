@@ -5,14 +5,12 @@
 // The root part trusts nothing the child brought and re-verifies everything.
 
 load core.panic: panic
-load core.process: exit
-load core.mem: ptr_of
 load core.utils: cast
-load std.os.unix: fork, waitpid, kill, geteuid
+load std.os.unix: kill, geteuid
 load std.fs.files: file_exists, file_read_text
 load std.strings: trim, parse_int, eq
-load .errors: YukiError, err
-load .util: str_starts, join2, sjoin, str_split
+load .errors: err
+load .util: str_starts, sjoin, str_split
 
 cfun setgroups(size: c_size_t, list: ptr<c_uint>) -> c_int;
 cfun setgid(gid: c_uint) -> c_int;
@@ -27,7 +25,7 @@ public fun is_root() -> bool {
 
 // Unprivileged user for the network and build phases.
 public fun nobody_id() -> c_uint {
-    set id: c_uint = 65534
+    static id: c_uint = 65534
     return id
 }
 
@@ -35,7 +33,7 @@ public fun nobody_id() -> c_uint {
 // proot only fakes geteuid()'s return value; the process status stays honest.
 // On read error returns -1 (fail-closed for PRoot detection).
 fun real_uid() -> int64 {
-    set f = "/proc/self/status"
+    static f = "/proc/self/status"
     if !file_exists(f) {
         return cast(geteuid(), "int64")
     }
@@ -63,7 +61,7 @@ fun real_uid() -> int64 {
 }
 
 // Privilege emulation (proot): geteuid()==0 while the kernel sees a regular user.
-// There setuid() changes nothing and kill(-1) kills the whole Termux session.
+// There setuid() changes nothing, and a global kill(-1) would kill the whole login session.
 public fun enc_is_proot() -> bool {
     if geteuid() != 0 {
         return false
@@ -80,11 +78,11 @@ public fun drop_privileges(uid: c_uint, gid: c_uint) {
     if enc_is_proot() {
         return
     }
-    set zpid: c_int = 0
+    static zpid: c_int = 0
     set _pg = setpgid(zpid, zpid)
-    set none: c_size_t = 0
+    static none: c_size_t = 0
     set dummy: c_uint = 0
-    set zero: c_uint = 0
+    static zero: c_uint = 0
     if setgroups(none, ptr_of(dummy)) != 0 {
         panic(err("could not clear supplementary groups", 701, ""))
     }
@@ -97,9 +95,9 @@ public fun drop_privileges(uid: c_uint, gid: c_uint) {
     if setuid(zero) == 0 {
         panic(err("privileges could be regained, refusing to continue", 702, ""))
     }
-    set a1: c_size_t = 1
-    set a0: c_size_t = 0
-    set opt: c_int = 38
+    static a1: c_size_t = 1
+    static a0: c_size_t = 0
+    static opt: c_int = 38
     if prctl(opt, a1, a0, a0, a0) != 0 {
         panic(err("could not set PR_SET_NO_NEW_PRIVS", 701, ""))
     }

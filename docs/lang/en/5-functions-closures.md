@@ -1,5 +1,7 @@
 # Functions and Closures
 
+> **English** · [Русский](../ru/5-functions-closures.md)
+
 Functions with the C ABI convention (`cfun`) are first-class entities: they can be assigned to variables, passed as arguments, and called indirectly. The language also recognizes anonymous functions and closures (section 2).
 
 ## Contents

@@ -1,5 +1,7 @@
 # Module std.sysinfo
 
+> **English** · [Русский](../../ru/stdlib/12-sysinfo.md)
+
 The `std.sysinfo` module provides cross-platform facilities for querying operating system attributes, CPU architecture, processor topology, memory statistics (physical RAM, swap), system load average, mounted storage filesystems, user account identification, and battery state.
 
 ---

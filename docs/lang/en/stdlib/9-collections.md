@@ -1,5 +1,7 @@
 # Module std.collections
 
+> **English** · [Русский](../../ru/stdlib/9-collections.md)
+
 The `std.collections` module provides a comprehensive suite of algorithms, utilities, and data structures for working with slices, arrays, and specialized containers: search routines, functional transformations, in-place slice mutation, string joining, dynamic list `List<T>`, hash table `HashMap<K, V>`, hash set `HashSet<T>`, double-ended queue `Deque<T>`, FIFO queue `Queue<T>`, doubly linked list `LinkedList<T>`, intrusive list `IntrusiveList`, LIFO stack `Stack<T>`, circular buffer `RingBuffer<T>`, and priority queue `PriorityQueue<T>`.
 
 ---

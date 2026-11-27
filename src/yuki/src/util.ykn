@@ -7,7 +7,7 @@ load std.strings: split, lines, lower, pad_end, repeat, str_join, parse_int, sli
 // IMPORTANT: wrapper names must NOT collide with std (str_*), otherwise the compiler
 // confuses them with the same-named std functions and the wrapper calls itself.
 load std.strings: starts_with, ends_with, index_of, index_of_from
-load std.fs.paths: path_join
+load std.fs: path_join
 
 public fun str_starts(s: string, prefix: string) -> bool {
     set r: bool? = starts_with(s, prefix)
@@ -258,7 +258,7 @@ public fun fmt_bytes(n: int64) -> string {
         return int_str(n) + " B"
     }
     set v: int64 = n
-    set units: string[] = ["KiB", "MiB", "GiB", "TiB"]
+    static units: string[] = ["KiB", "MiB", "GiB", "TiB"]
     set ui: int64 = 0
     set rest: int64 = 0
     loop {

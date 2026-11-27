@@ -1,5 +1,7 @@
 # Module std.sqlite
 
+> **English** · [Русский](../../ru/stdlib/32-sqlite.md)
+
 The `std.sqlite` module provides comprehensive and high-performance tools for working with the SQLite 3 embedded relational database engine. The module includes connection management (in-file and in-memory), prepared statements, parameterized queries with SQL-injection protection, transactions, and safe result navigation via the Fluent API of `SqliteRow` and `SqliteValue` classes, designed in accordance with the `std.json` and `std.jsonc` modules.
 
 ---

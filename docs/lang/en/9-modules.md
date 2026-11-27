@@ -1,5 +1,7 @@
 # Modules, Imports, and the Visibility System
 
+> **English** · [Русский](../ru/9-modules.md)
+
 Yukino organizes code into a hierarchical module system, where filesystem paths directly determine the addressing of modules and namespaces.
 
 ---

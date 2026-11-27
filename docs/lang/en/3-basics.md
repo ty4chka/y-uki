@@ -1,5 +1,7 @@
 # Basic Syntax, Operators, and Control Flow
 
+> **English** · [Русский](../ru/3-basics.md)
+
 In Yukino, the syntax is designed so that state mutations, function calls, and control flow are maximally explicit and deterministic.
 
 ---

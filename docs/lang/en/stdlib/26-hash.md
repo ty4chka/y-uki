@@ -1,5 +1,7 @@
 # Module std.hash
 
+> **English** · [Русский](../../ru/stdlib/26-hash.md)
+
 The `std.hash` module provides a comprehensive suite of checksum and cryptographic hashing algorithms implemented entirely in pure Yukino without external runtime dependencies. The module unifies ultra-fast non-cryptographic hashing algorithms with globally recognized cryptographic standards:
 
 - **BitHash64:** an ultra-fast non-cryptographic 64-bit hash optimized for maximum throughput ([original repository](https://github.com/shareui/bithash)). Although not widely known across the industry, it is included in the standard library as a project created by the lead developer and founder of Yukino, and in practice BitHash frequently proves fast and helpful in application workloads. It is specifically designed for hash tables, in-memory caches, Bloom filters, and deduplication systems where single-cycle CPU performance and uniform avalanche bit distribution are paramount.

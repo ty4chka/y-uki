@@ -1,0 +1,22 @@
+[bin]
+name = "yuki"
+namedbg = "yuki_debug"
+version = "0.1.0"
+entry = "main.ykn"
+yukino = ["0.1.0", "+"]
+
+[config.release]
+inline_statics = true
+strip_unused = true
+opt_level = 3
+lto = true
+debug_assertions = false
+panic_strategy = "unwind"
+strip = true
+reloc_model = "pic"
+code_model = "default"
+fast_math = false
+emit = ["bin"]
+
+[features]
+default = []

@@ -1,5 +1,7 @@
 # Error Handling and Exceptions (sus, catch, finally, panic)
 
+> **English** · [Русский](../ru/14-errors.md)
+
 The Yukino language adopts a strict, predictable, and explicit error handling model. It separates the logical absence of data from unexpected runtime failures, providing zero checking overhead on the happy path ("zero-cost exceptions") and fully typed error context during stack unwinding.
 
 ---

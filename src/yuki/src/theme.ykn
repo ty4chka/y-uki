@@ -16,7 +16,7 @@
 load core.utils: cast
 load std.io: is_stdout_terminal
 load std.env: get_or, set_env, has_env
-load std.outf: Styled, style, supports_truecolor
+load std.outf: style, supports_truecolor
 load std.strings: eq, contains, slice, parse_int
 load std.toml: parse, validate
 load std.fs.files: file_exists, file_read_text, file_write_text
@@ -345,7 +345,7 @@ public fun grad(text: string, i: int64, n: int64) -> string {
 }
 
 public fun theme_template() -> string {
-    set l = [
+    static l = [
         "# yuki theme. Everything here is optional: delete a line to get the default.",
         "# Put this file at <config>/theme.toml or point YUKI_THEME_FILE to it.",
         "",
@@ -453,7 +453,7 @@ public fun theme_preset_toml(name: string) -> string {
         return sjoin(preset_lines("contrast", "ansi", preset_colors("contrast")), "\n") + "\n"
     }
     if eq(name, "mono") {
-        set l = [
+        static l = [
             "# yuki theme preset: mono",
             "# written by `yuki theme use mono`; edit freely or delete the file.",
             "",

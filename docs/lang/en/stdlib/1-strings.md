@@ -1,5 +1,7 @@
 # Module std.strings
 
+> **English** · [Русский](../../ru/stdlib/1-strings.md)
+
 The `std.strings` module provides a comprehensive, high-performance suite of functions and error structures for string operations: substring manipulation, search, comparison, case conversions, formatting, padding, splitting, joining, and primitive type parsing. All inspection, transformation, and search functions take strings by value (`s: string`), as strings in Yukino are lightweight 16-byte Copy descriptors `{ ptr, len }` passed directly in CPU registers without heap allocations.
 
 ---

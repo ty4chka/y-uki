@@ -1,5 +1,7 @@
 # Module std.crypto
 
+> **English** · [Русский](../../ru/stdlib/27-crypto.md)
+
 The `std.crypto` module provides a comprehensive production-grade cryptographic toolkit implemented entirely in pure Yukino without external C/C++ runtime dependencies. The sole external system integration point is sourcing cryptographically secure operating system entropy (`getrandom` on Linux, `arc4random_buf` on BSD/macOS, `BCryptGenRandom` on Windows).
 
 The module architecture brings together recognized international cryptographic standards designed with constant-time execution paths to safeguard against side-channel timing attacks:

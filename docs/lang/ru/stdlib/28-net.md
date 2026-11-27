@@ -1,5 +1,7 @@
 # Модуль std.net
 
+> [English](../../en/stdlib/28-net.md) · **Русский**
+
 Модуль `std.net` предоставляет полный высокоуровневый сетевой стек для языка Yukino: парсинг и разрешение сетевых адресов IPv4/IPv6, надежную потоковую передачу данных через TCP (`TcpStream`, `TcpListener`), датаграммный обмен через UDP (`UdpSocket`), кроссплатформенное мультиплексирование ввода-вывода с неблокирующими сокетами (`SocketPoller`), криптографическое шифрование TLS/HTTPS (`TlsStream`, `TlsServerConfig`), кодек протокола HTTP/1.1 (`HttpRequest`, `HttpResponse`, `HttpHeaders`), встроенный HTTP/HTTPS сервер (`HttpServer`, `HttpsServer`) и клиент сетевых HTTP-запросов (`HttpClient`, `get`, `post`, `post_json`).
 
 ---

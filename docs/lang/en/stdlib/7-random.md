@@ -1,5 +1,7 @@
 # Module std.random
 
+> **English** · [Русский](../../ru/stdlib/7-random.md)
+
 The `std.random` module provides pseudorandom number generators (PRNG), the SplitMix64 algorithm, deterministic isolated generators with a given seed, global random value generators, sampling, Gaussian distributions, and UUID version 4 generation.
 
 ---

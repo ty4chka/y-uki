@@ -16,7 +16,7 @@ load .errors: YukiError, err
 load .verify: VerifyError
 load .explain: hint_line
 load .cmdlist: suggest, help_lines
-load .i18n: t, lang, i18n_init
+load .i18n: t, i18n_init
 load .sysdb: db_has
 load .sysinstall: cmd_sys_install_many, cmd_sys_uninstall, cmd_sys_autoremove, cmd_sys_upgrade, cmd_sys_info, cmd_sys_files, cmd_sys_owns, cmd_sys_check, cmd_sys_audit, cmd_sys_history, cmd_sys_rollback
 load .tools: cmd_show, cmd_outdated, cmd_search, cmd_list, cmd_orphans, cmd_tree, cmd_rdeps, cmd_related, cmd_graph, cmd_why, cmd_doctor, cmd_config, cmd_clean, cmd_hold, cmd_unhold, cmd_export, cmd_import, cmd_explain, cmd_completions, cmd_help, cmd_pack
@@ -354,7 +354,7 @@ fun run_project(ref argv: string[]) -> bool {
         } elif eq(sub, "renew-all") && (n == 3 || n == 4) {
             set days: int64 = 30
             if n == 4 {
-                rewrite days = parse_int(argv[3]) ?? 30
+                rewrite days = cast(parse_int(argv[3]) ?? 30, "int64")
             }
             cmd_index_renew_all(argv[2], days)
         } else {

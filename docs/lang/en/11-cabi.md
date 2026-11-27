@@ -1,5 +1,7 @@
 # System C ABI and C FFI
 
+> **English** · [Русский](../ru/11-cabi.md)
+
 Yukino is designed for seamless interoperability with C, C++, Rust, and operating system libraries. The language supports direct declaration of external C functions, C structures with a controlled memory layout, custom calling conventions, and C ABI function exports.
 
 ---

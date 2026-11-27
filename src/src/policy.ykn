@@ -25,13 +25,13 @@ public fun policy_check(pkg: string, rel: string) -> string {
     if str_ends(rel, ".yuki-tmp") || str_ends(rel, ".yuki-new") || str_ends(rel, ".yuki-save") {
         return "reserved file suffix"
     }
-    set allowed = ["usr/", "opt/", "etc/"]
+    static allowed = ["usr/", "opt/", "etc/"]
     if !starts_any(rel + "/", allowed) {
         return "outside of usr/, opt/ and etc/"
     }
 
     // paths a package must never touch
-    set never = [
+    static never = [
         "etc/yuki", "usr/lib/yuki", "usr/share/yuki", "var/lib/yuki",
         "etc/sudoers", "etc/pam.d", "etc/pam.conf", "etc/security",
         "etc/passwd", "etc/shadow", "etc/group", "etc/gshadow", "etc/subuid", "etc/subgid",
@@ -48,7 +48,7 @@ public fun policy_check(pkg: string, rel: string) -> string {
     }
 
     // only the yuki package may replace yuki's own binary
-    set yuki_bins = ["usr/bin/yuki", "usr/local/bin/yuki", "usr/sbin/yuki", "usr/local/sbin/yuki"]
+    static yuki_bins = ["usr/bin/yuki", "usr/local/bin/yuki", "usr/sbin/yuki", "usr/local/sbin/yuki"]
     if starts_any(rel, yuki_bins) && !eq(pkg, "yuki") {
         return "only the yuki package may replace yuki"
     }

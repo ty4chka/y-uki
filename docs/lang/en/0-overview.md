@@ -1,5 +1,7 @@
 # Yukino Documentation
 
+> **English** · [Русский](../ru/0-overview.md)
+
 This documentation is intended for developers who are already familiar with functional programming, object-oriented programming, typed languages, and common development tools. It is not aimed at absolute beginners: the primary focus is on Yukino semantics, memory safety model, and practical code examples.
 
 For learning from the beginning, read the documents in numeric order: start with this overview, then `1-setup.md`, followed by later sections in ascending order.

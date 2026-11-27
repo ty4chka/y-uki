@@ -1,5 +1,7 @@
 # Module std.datetime
 
+> **English** · [Русский](../../ru/stdlib/6-datetime.md)
+
 The `std.datetime` module provides tools for working with dates, time, time intervals, system and monotonic clocks, as well as formatting and parsing of string representations according to the ISO 8601 standard.
 
 ---

@@ -13,7 +13,6 @@
 // When animation is off (CI, pipe, TERM=dumb, theme), the panel is not drawn:
 // plain "✔ ..." lines remain, plus the final tree at the end.
 
-load core.utils: cast
 load std.stdotool.live_area: LiveArea
 load std.io: println
 load .ui: ok, rule, c_accent, c_good, c_warn, c_bad, c_dim, c_speed, c_bold, render_bar
@@ -199,7 +198,7 @@ public class InstallView {
         set out: string[] = []
         out.push(paint("logo", "yuki") + c_dim("  " + sym("dot") + "  ") + this.title)
         out.push("  " + rule(52))
-        set labels = ["resolve", "fetch", "install"]
+        static labels = ["resolve", "fetch", "install"]
         for p in 0..3 {
             set icon = c_dim(sym("pending"))
             set note = ""

@@ -14,19 +14,17 @@
 //            "files": [ { "from": "target/release/rg", "to": "usr/bin/rg", "mode": "755" } ] },
 //   "deps": ["pcre2@10.42.0"]
 // }
-// For kind = "lib": use an archive "url" instead of bin/src. "checksum" may be omitted.
+// For kind = "lib": source-only — the same "src" block; prebuilt "url"/"bin" artifacts are not allowed.
 
-load core.utils: cast
 load core.panic: panic
-load std.io: println
-load std.json: JsonValue, json_parse, json_object, json_array, json_string, json_int, json_bool, json_pretty, json_validate, json_stringify
+load std.json: json_parse, json_object, json_array, json_string, json_int, json_bool, json_pretty, json_validate, json_stringify
 load std.fs.files: file_exists, file_read_text, file_write_text
 load std.fs.dirs: dir_create_all, dir_walk, dir_exists
-load std.fs.paths: path_join, path_parent, path_file_name, path_file_stem
-load std.strings: eq, trim, split, slice, str_join, contains, parse_int
+load std.fs.paths: path_file_stem
+load std.strings: eq, trim, slice, contains
 load .errors: YukiError, err
-load .ui: ok, info, warn, bad, step, c_accent, c_dim, c_good
-load .index: Release, entry_rel, entry_dir, resolve_text
+load .ui: ok, info, warn, bad, step, c_accent, c_dim
+load .index: entry_rel, entry_dir, resolve_text
 load .trust: sign_text, pubkey_of
 load .pipeline: fetch_unpinned
 load .fetch: check_url
@@ -191,9 +189,22 @@ public fun cmd_index_add(file: string, keyname: string) {
     item.set("yanked", json_bool(false))
 
     if eq(kind, "lib") {
-        set url = rj.get("url").as_string_or("")
-        item.set("url", json_string(url))
-        item.set("checksum", json_string(filled_checksum(url, rj.get("checksum").as_string_or(""), name)))
+        // libraries are source-only: built from source in the project, no prebuilt artifacts
+        if rj.get("url").as_string_or("").len() > 0 || rj.get("bin").len() > 0 {
+            panic(err("libraries are source-only: prebuilt artifacts are not allowed (provide a src block)", 219, file))
+        }
+        set sj = rj.get("src")
+        set su = sj.get("url").as_string_or("")
+        if su.len() == 0 {
+            panic(err("a lib release needs a src block (source archive)", 219, file))
+        }
+        set so = json_object()
+        so.set("url", json_string(su))
+        so.set("checksum", json_string(filled_checksum(su, sj.get("checksum").as_string_or(""), name + " source")))
+        so.set("net", json_bool(sj.get("net").as_bool_or(false)))
+        so.set("build", sj.get("build").cp())
+        so.set("files", sj.get("files").cp())
+        item.set("src", so)
     } else {
         set binobj = json_object()
         set targets = json_array([])
@@ -346,9 +357,6 @@ public fun cmd_index_check(download: bool) {
                     if download && !eq(fetch_unpinned(bu), bc) {
                         panic(err("the download does not match the checksum for target " + tname, 207, p))
                     }
-                }
-                if download && eq(rel.kind, "lib") && !eq(fetch_unpinned(rel.url), rel.checksum) {
-                    panic(err("the download does not match the checksum", 207, p))
                 }
                 if download && rel.src_url.len() > 0 && !eq(fetch_unpinned(rel.src_url), rel.src_checksum) {
                     panic(err("the source download does not match the checksum", 207, p))

@@ -1,5 +1,7 @@
 # Module std.compress
 
+> **English** · [Русский](../../ru/stdlib/15-compress.md)
+
 The `std.compress` module provides tools for in-memory and streaming file compression and decompression. Supported algorithms and formats include Gzip, Zstandard (zstd), XZ/LZMA, Deflate, Zlib, Bzip2, LZ4, as well as CRC-32 checksum calculation.
 
 ---

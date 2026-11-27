@@ -7,7 +7,7 @@ load core.panic: panic
 load std.fs.files: file_exists, file_read_text, file_write_text, file_rename
 load std.strings: trim, slice, eq
 load .util: str_starts, str_index, str_index_from, sjoin, str_lines, str_split
-load .errors: YukiError, err
+load .errors: err
 
 static MANIFEST: string = "yuki.toml"
 static SECTION: string = "[libs.runtime]"

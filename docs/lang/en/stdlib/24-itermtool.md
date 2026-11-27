@@ -1,5 +1,7 @@
 # Module std.itermtool
 
+> **English** · [Русский](../../ru/stdlib/24-itermtool.md)
+
 The `std.itermtool` (Interactive Terminal Tool) module provides a low-level interactive terminal engine and foundational primitives for building full-screen TUI frameworks and terminal interfaces on par with `ratatui` (serving as an equivalent to `crossterm` in the Rust ecosystem). The module delivers cross-platform terminal raw mode (**Raw Mode**), alternate screen buffer (**Alternate Screen**), 0-based cursor navigation, TrueColor 24-bit RGB and 256-color palette rendering, background rectangular fills, non-blocking event polling and keyboard parsing (**KeyEvent**), and comprehensive mouse capture and parsing (**MouseEvent**): buttons (left, middle, right, back, forward), movement, dragging with held buttons, and scroll wheel operations (up, down, left, right) over the modern SGR 1006 protocol without the overhead of heavy runtimes.
 
 ---

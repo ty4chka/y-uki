@@ -1,5 +1,7 @@
 # Module std.env
 
+> **English** · [Русский](../../ru/stdlib/13-env.md)
+
 The `std.env` module provides cross-platform utilities for inspecting, setting, validating, and removing environment variables of the current process, loading all environment variables into typed structures or hash maps, and parsing `.env` (dotenv) configuration files with support for quoting, escape sequences, variable interpolation, and default values.
 
 ---

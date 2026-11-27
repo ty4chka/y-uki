@@ -1,6 +1,49 @@
 import math, os, re, html
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 os.makedirs(OUT, exist_ok=True)
+
+# Labeled artwork exists in two languages: assets/en/ and assets/ru/.
+# Language-neutral pieces (palette, num-, who-, sec-, divider) stay in assets/.
+LANGS = {
+    "en": {
+        "banner_title": "The package manager for Yukino",
+        "banner_sub": "no servers of your own · signed · with rollback",
+        "btn_start": "Quick start",
+        "btn_tutorial": "Your own index: tutorial",
+        "btn_security": "Security model",
+        "btn_commands": "All commands",
+        "stat_cmds": "commands",
+        "stat_errors": "explained errors",
+        "stat_servers": "servers of your own",
+        "stat_modes": "terminal modes",
+        "card_signed": ("Signed index", ["Ed25519 + BLAKE3, key roles,", "publisher threshold, rollback proof"]),
+        "card_priv": ("No root until the end", ["network and builds run as nobody,", "root verifies everything again"]),
+        "card_fast": ("Parallel downloads", ["up to 16 workers, hashing in-line,", "the panel never stalls"]),
+        "card_tx": ("Transactions and rollback", ["journal on disk, auto-rollback after", "a crash, one upgrade = one transaction"]),
+        "card_build": ("No binary? We build it", ["sandboxed, no network, the result", "is checked against the signed hash"]),
+        "card_graph": ("Package links", ["why, tree, rdeps, related, graph,", "orphans and autoremove"]),
+        "status": "status: builds and passes selftest",
+    },
+    "ru": {
+        "banner_title": "Менеджер пакетов для Yukino",
+        "banner_sub": "без своих серверов · с подписями · с откатом",
+        "btn_start": "Быстрый старт",
+        "btn_tutorial": "Свой индекс: туториал",
+        "btn_security": "Модель защиты",
+        "btn_commands": "Все команды",
+        "stat_cmds": "команд",
+        "stat_errors": "ошибок с разбором",
+        "stat_servers": "своих серверов",
+        "stat_modes": "режима терминала",
+        "card_signed": ("Подписанный индекс", ["Ed25519 + BLAKE3, роли ключей,", "порог издателей, защита от отката"]),
+        "card_priv": ("Без root до конца", ["сеть и сборка от nobody, root", "проверяет всё заново"]),
+        "card_fast": ("Параллельные загрузки", ["до 16 потоков, хеш прямо в воркере,", "панель не замирает"]),
+        "card_tx": ("Транзакции и откат", ["журнал на диск, автооткат после", "сбоя, один upgrade = одна транзакция"]),
+        "card_build": ("Нет бинарника? Соберём", ["песочница, без сети, результат", "сверяется с подписанным хешем"]),
+        "card_graph": ("Связи пакетов", ["why, tree, rdeps, related, graph,", "orphans и autoremove"]),
+        "status": "статус: сборка проходит, selftest зелёный",
+    },
+}
 FONT = "Roboto, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans', sans-serif"
 MONO = "'JetBrains Mono','DejaVu Sans Mono',Consolas,Menlo,monospace"
 
@@ -44,7 +87,7 @@ def chip(x, y, label, fill, fg, size=19, h=40, bold=600):
     return (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{h//2}" fill="{fill}"/>'
             f'<text x="{x + w/2}" y="{y + h/2 + size*0.35}" text-anchor="middle" font-family="{FONT}" font-size="{size}" font-weight="{bold}" fill="{fg}">{esc(label)}</text>'), w
 
-def banner(c):
+def banner(c, L):
     W, H = 1200, 440
     b = f'<defs><clipPath id="r"><rect width="{W}" height="{H}" rx="56"/></clipPath></defs><g clip-path="url(#r)">'
     b += f'<rect width="{W}" height="{H}" fill="{c["bg"]}"/>'
@@ -54,8 +97,8 @@ def banner(c):
     b += f'<path d="{shape(40, 60, 22, 4, 0.18, 0.4)}" fill="{c["sec"]}"/>'
     b += (f'<text x="60" y="226" font-family="{FONT}" font-size="176" font-weight="800" letter-spacing="-6" fill="{c["text"]}">yu'
           f'<tspan fill="{c["prim"]}">ki</tspan></text>')
-    b += f'<text x="64" y="304" font-family="{FONT}" font-size="36" font-weight="700" fill="{c["text"]}">Менеджер пакетов для Yukino</text>'
-    b += f'<text x="64" y="344" font-family="{FONT}" font-size="25" fill="{c["textv"]}">без своих серверов · с подписями · с откатом</text>'
+    b += f'<text x="64" y="304" font-family="{FONT}" font-size="36" font-weight="700" fill="{c["text"]}">{esc(L["banner_title"])}</text>'
+    b += f'<text x="64" y="344" font-family="{FONT}" font-size="25" fill="{c["textv"]}">{esc(L["banner_sub"])}</text>'
     x = 64
     for label in ("Yukino", "Ed25519", "BLAKE3", "pacman-style"):
         s, w = chip(x, 372, label, c["sec"], c["onsec"], 19)
@@ -160,11 +203,10 @@ def divider(c):
         x += 32
     return svg(W, H, d, "divider")
 
-def status_chip(c):
-    label = "статус: ещё не собирался: начните с yuki selftest"
+def status_chip(c, label):
     w = tw(label, 18, 0.54) + 60
-    b = f'<rect width="{w}" height="44" rx="22" fill="{c["warn"]}"/><path d="{shape(26, 22, 8, 8, 0.15)}" fill="{c["onwarn"]}"/>'
-    b += f'<text x="{w/2 + 10}" y="29" text-anchor="middle" font-family="{FONT}" font-size="18" font-weight="600" fill="{c["onwarn"]}">{esc(label)}</text>'
+    b = f'<rect width="{w}" height="44" rx="22" fill="{c["ter"]}"/><path d="{shape(26, 22, 8, 8, 0.15)}" fill="{c["onter"]}"/>'
+    b += f'<text x="{w/2 + 10}" y="29" text-anchor="middle" font-family="{FONT}" font-size="18" font-weight="600" fill="{c["onter"]}">{esc(label)}</text>'
     return svg(w, 44, b, label)
 
 def palette():
@@ -207,29 +249,34 @@ def count_codes():
         return 60
 NCMD, NERR = count_cmds(), count_codes()
 
-for name, c in THEMES.items():
-    write(f"banner-{name}.svg", banner(c))
-    write(f"btn-start-{name}.svg", button("Быстрый старт", "filled", c, 290))
-    write(f"btn-tutorial-{name}.svg", button("Свой индекс: туториал", "tonal", c, 360))
-    write(f"btn-security-{name}.svg", button("Модель защиты", "outlined", c, 290))
-    write(f"btn-commands-{name}.svg", button("Все команды", "outlined", c, 250))
-    write(f"stat-cmds-{name}.svg", stat(str(NCMD), "команд", c, "a"))
-    write(f"stat-errors-{name}.svg", stat(str(NERR), "ошибок с разбором", c, "b"))
-    write(f"stat-servers-{name}.svg", stat("0", "своих серверов", c, "c"))
-    write(f"stat-modes-{name}.svg", stat("3", "режима терминала", c, "d"))
-    write(f"card-signed-{name}.svg", card("Подписанный индекс", ["Ed25519 + BLAKE3, роли ключей,", "порог издателей, защита от отката"], "sign", c, "a"))
-    write(f"card-priv-{name}.svg", card("Без root до конца", ["сеть и сборка от nobody, root", "проверяет всё заново"], "priv", c, "c"))
-    write(f"card-fast-{name}.svg", card("Параллельные загрузки", ["до 16 потоков, хеш прямо в воркере,", "панель не замирает"], "grid", c, "b"))
-    write(f"card-tx-{name}.svg", card("Транзакции и откат", ["журнал на диск, автооткат после", "сбоя, один upgrade = одна транзакция"], "undo", c, "d"))
-    write(f"card-build-{name}.svg", card("Нет бинарника? Соберём", ["песочница, без сети, результат", "сверяется с подписанным хешем"], "build", c, "a"))
-    write(f"card-graph-{name}.svg", card("Связи пакетов", ["why, tree, rdeps, related, graph,", "orphans и autoremove"], "graph", c, "c"))
-    write(f"divider-{name}.svg", divider(c))
-    write(f"status-{name}.svg", status_chip(c))
+for lang, L in LANGS.items():
+    d = os.path.join(OUT, lang)
+    os.makedirs(d, exist_ok=True)
+    def write_lang(name, content, d=d):
+        with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+            f.write(content)
+    for name, c in THEMES.items():
+        write_lang(f"banner-{name}.svg", banner(c, L))
+        write_lang(f"btn-start-{name}.svg", button(L["btn_start"], "filled", c, 290))
+        write_lang(f"btn-tutorial-{name}.svg", button(L["btn_tutorial"], "tonal", c, 360))
+        write_lang(f"btn-security-{name}.svg", button(L["btn_security"], "outlined", c, 290))
+        write_lang(f"btn-commands-{name}.svg", button(L["btn_commands"], "outlined", c, 250))
+        write_lang(f"stat-cmds-{name}.svg", stat(str(NCMD), L["stat_cmds"], c, "a"))
+        write_lang(f"stat-errors-{name}.svg", stat(str(NERR), L["stat_errors"], c, "b"))
+        write_lang(f"stat-servers-{name}.svg", stat("0", L["stat_servers"], c, "c"))
+        write_lang(f"stat-modes-{name}.svg", stat("3", L["stat_modes"], c, "d"))
+        for key, icon_kind, tone in [("card_signed", "sign", "a"), ("card_priv", "priv", "c"), ("card_fast", "grid", "b"),
+                                     ("card_tx", "undo", "d"), ("card_build", "build", "a"), ("card_graph", "graph", "c")]:
+            title, lines = L[key]
+            write_lang(f"{key.replace('_', '-')}-{name}.svg", card(title, lines, icon_kind, c, tone))
+        write_lang(f"status-{name}.svg", status_chip(c, L["status"]))
 
+for name, c in THEMES.items():
+    write(f"divider-{name}.svg", divider(c))
 write("palette.svg", palette())
 for i in range(1, 6): write(f"num-{i}.svg", num_badge(i))
 write("who-nobody.svg", who("nobody", "#625b71"))
 write("who-root.svg", who("root", "#b3261e"))
 for kind, n, a in [("arrow", 9, .07), ("priv", 6, .10), ("grid", 12, .08), ("sign", 8, .09), ("palette", 10, .08), ("q", 5, .12), ("graph", 9, .07), ("undo", 6, .1)]:
     write(f"sec-{kind}.svg", section_icon(kind, n, a))
-print("assets:", len(os.listdir(OUT)), "cmds", NCMD, "errors", NERR)
+print("assets:", len(os.listdir(OUT)), "+ en/ru", "cmds", NCMD, "errors", NERR)

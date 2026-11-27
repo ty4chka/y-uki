@@ -1,5 +1,7 @@
 # Module std.yaml
 
+> **English** · [Русский](../../ru/stdlib/31-yaml.md)
+
 The `std.yaml` module provides high-performance tools for parsing, safe data extraction, validation, and serialization of structured documents in the YAML (YAML Ain't Markup Language) v1.2 format in pure Yukino without external dependencies.
 
 ---

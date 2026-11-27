@@ -4,10 +4,9 @@
 
 load core.panic: panic
 load std.strings: eq
-load .errors: YukiError, err
-load .index: Release, resolve
+load .errors: err
+load .index: resolve
 load .util: dep_name, dep_version
-load .view: InstallView
 
 public struct Node {
     name: string

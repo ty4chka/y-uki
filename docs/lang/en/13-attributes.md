@@ -1,5 +1,7 @@
 # Compiler Attributes
 
+> **English** · [Русский](../ru/13-attributes.md)
+
 Compiler attributes in Yukino are declarative metadata attached to program elements or an entire module. They control conditional compilation, LLVM optimizer behavior, the testing framework, and static warning (lint) filtering.
 
 > [!NOTE]

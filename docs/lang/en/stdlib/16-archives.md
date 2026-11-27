@@ -1,5 +1,7 @@
 # Module std.fs.archives
 
+> **English** · [Русский](../../ru/stdlib/16-archives.md)
+
 The `std.fs.archives` module provides tools for working with standard archive formats TAR and ZIP, including archive creation, content listing, extracting files and directories, transparent compression (Gzip, Zstandard, XZ, Bzip2, Deflate), and password-based encryption (ZipCrypto, AES-CBC, AES-CTR, WinZip AES). Cryptographic primitives are available through the submodule `std.fs.archives.pass`.
 
 ---

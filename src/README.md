@@ -1,25 +1,27 @@
+<p align="center"><b>English</b> · <a href="README.ru.md">Русский</a></p>
+
 <div align="center">
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg"><img alt="yuki: менеджер пакетов для Yukino" src="assets/banner-light.svg" width="880"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/banner-dark.svg"><img alt="yuki: package manager for Yukino" src="assets/en/banner-light.svg" width="880"></picture>
 
-<sub>Системный (<code>pacman</code>-подобный) и проектный (<code>cargo</code>-подобный) менеджер пакетов для языка <b>Yukino</b>.<br>Без выделенных серверов · Ed25519 + BLAKE3 · разделение привилегий <code>root / nobody</code> · поддержка PRoot / Termux · атомарный откат.</sub>
-
-<br><br>
+<sub>The package manager for Yukino. No servers of your own, with signatures and rollback.</sub>
 
 <p>
-<a href="#start"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/btn-start-dark.svg"><img alt="Быстрый старт" src="assets/btn-start-light.svg" width="235"></picture></a>
-<a href="TUTORIAL.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/btn-tutorial-dark.svg"><img alt="Свой индекс: туториал" src="assets/btn-tutorial-light.svg" width="285"></picture></a>
-<a href="DESIGN.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/btn-security-dark.svg"><img alt="Модель защиты" src="assets/btn-security-light.svg" width="235"></picture></a>
-<a href="#commands"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/btn-commands-dark.svg"><img alt="Все команды" src="assets/btn-commands-light.svg" width="205"></picture></a>
+<a href="#start"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/btn-start-dark.svg"><img alt="Quick start" src="assets/en/btn-start-light.svg" width="230"></picture></a>
+<a href="TUTORIAL.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/btn-tutorial-dark.svg"><img alt="Your own index: tutorial" src="assets/en/btn-tutorial-light.svg" width="280"></picture></a>
+</p>
+<p>
+<a href="DESIGN.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/btn-security-dark.svg"><img alt="Security model" src="assets/en/btn-security-light.svg" width="230"></picture></a>
+<a href="#commands"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/btn-commands-dark.svg"><img alt="All commands" src="assets/en/btn-commands-light.svg" width="200"></picture></a>
 </p>
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/status-dark.svg"><img alt="статус сборки и самопроверки" src="assets/status-light.svg"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/status-dark.svg"><img alt="status: builds and passes selftest" src="assets/en/status-light.svg"></picture>
 
 <p>
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/stat-cmds-dark.svg"><img alt="45 команд" src="assets/stat-cmds-light.svg" width="208"></picture>
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/stat-errors-dark.svg"><img alt="78 ошибок с разбором" src="assets/stat-errors-light.svg" width="208"></picture>
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/stat-servers-dark.svg"><img alt="0 своих серверов" src="assets/stat-servers-light.svg" width="208"></picture>
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/stat-modes-dark.svg"><img alt="3 режима терминала" src="assets/stat-modes-light.svg" width="208"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/stat-cmds-dark.svg"><img alt="commands" src="assets/en/stat-cmds-light.svg" width="205"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/stat-errors-dark.svg"><img alt="explained errors" src="assets/en/stat-errors-light.svg" width="205"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/stat-servers-dark.svg"><img alt="servers of your own" src="assets/en/stat-servers-light.svg" width="205"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/stat-modes-dark.svg"><img alt="terminal modes" src="assets/en/stat-modes-light.svg" width="205"></picture>
 </p>
 
 </div>
@@ -27,40 +29,34 @@
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
 
 <a name="about"></a>
-## <img src="assets/sec-arrow.svg" height="36" align="absmiddle" alt=""> Что такое yuki
+## <img src="assets/sec-arrow.svg" height="34" align="absmiddle" alt=""> What it is
 
-**yuki** объединяет системный менеджер пакетов (`sudo yuki install`, привычные флаги `-S`, `-Syu`, `-Rs`, `-Q` как в `pacman`) и менеджер зависимостей проекта (`yuki add`, секция `[libs.runtime]` в `yuki.toml`).  
-Реестр пакетов — это обычный Git-репозиторий: архивы раздаются со статических релизов и зеркал, а целостность и свежесть гарантируются подписями **Ed25519** и хешами **BLAKE3**.
+**yuki** installs applications system-wide (`sudo yuki install`, like pacman) and libraries into
+projects (`yuki add`, written to `yuki.toml`).
+The registry is an ordinary git repository: GitHub serves the files and trust comes from signatures
+and hashes, so **no servers of your own are needed**.
 
-<p align="center"><img src="assets/preview/yuki-live.gif" width="780" alt="живая панель установки с деревом зависимостей"></p>
-<p align="center"><sub>Живая многострочная панель (<code>LiveArea</code>): фазы транзакции сверху, дерево зависимостей и параллельные воркеры снизу</sub></p>
+<p align="center"><img src="assets/preview/yuki-live.gif" width="760" alt="install with a growing dependency tree"></p>
+<p align="center"><sub>Live panel: phases on top, the dependency tree grows below, downloads run in parallel</sub></p>
 
 <table align="center">
 <tr>
-<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/card-signed-dark.svg"><img alt="Подписанный индекс" src="assets/card-signed-light.svg" width="290"></picture></td>
-<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/card-priv-dark.svg"><img alt="Без root до конца" src="assets/card-priv-light.svg" width="290"></picture></td>
-<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/card-fast-dark.svg"><img alt="Параллельные загрузки" src="assets/card-fast-light.svg" width="290"></picture></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/card-signed-dark.svg"><img alt="Signed index" src="assets/en/card-signed-light.svg" width="290"></picture></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/card-priv-dark.svg"><img alt="No root until the end" src="assets/en/card-priv-light.svg" width="290"></picture></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/card-fast-dark.svg"><img alt="Parallel downloads" src="assets/en/card-fast-light.svg" width="290"></picture></td>
 </tr>
 <tr>
-<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/card-tx-dark.svg"><img alt="Транзакции и откат" src="assets/card-tx-light.svg" width="290"></picture></td>
-<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/card-build-dark.svg"><img alt="Нет бинарника? Соберём" src="assets/card-build-light.svg" width="290"></picture></td>
-<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/card-graph-dark.svg"><img alt="Связи пакетов" src="assets/card-graph-light.svg" width="290"></picture></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/card-tx-dark.svg"><img alt="Transactions and rollback" src="assets/en/card-tx-light.svg" width="290"></picture></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/card-build-dark.svg"><img alt="No binary? We build it" src="assets/en/card-build-light.svg" width="290"></picture></td>
+<td><picture><source media="(prefers-color-scheme: dark)" srcset="assets/en/card-graph-dark.svg"><img alt="Package links" src="assets/en/card-graph-light.svg" width="290"></picture></td>
 </tr>
 </table>
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
-
 <a name="start"></a>
-## <img src="assets/sec-arrow.svg" height="36" align="absmiddle" alt=""> Быстрый старт
+## <img src="assets/sec-arrow.svg" height="34" align="absmiddle" alt=""> Quick start
 
 <table>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-1.svg" width="68" alt="1"></td>
-  <td valign="top">
-    <b>Соберите бинарник и запустите эталонную самопроверку</b><br>
-    После сборки команда <code>yuki selftest</code> проверит криптографию BLAKE3/Ed25519, упаковщик tar, политику путей и пул потоков на эталонных векторах.
-  </td>
-</tr>
+<tr><td width="96" valign="top"><img src="assets/num-1.svg" width="72" alt="1"></td><td valign="top"><b>Build and verify</b><br>the first build compiles the sources; <code>selftest</code> then checks hashes, signatures and threads against known values</td><td valign="top" align="right"></td></tr>
 </table>
 
 ```bash
@@ -70,259 +66,186 @@ yuki selftest && yuki doctor
 ```
 
 <table>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-2.svg" width="68" alt="2"></td>
-  <td valign="top">
-    <b>Подключите индекс и добавьте доверенный ключ издателя</b><br>
-    Клиент выведет отпечаток ключа (fingerprint) и запросит подтверждение перед записью в хранилище доверия.
-  </td>
-</tr>
+<tr><td width="96" valign="top"><img src="assets/num-2.svg" width="72" alt="2"></td><td valign="top"><b>Point at an index and a trusted key</b><br>the key fingerprint is shown and asked to be confirmed</td><td valign="top" align="right"></td></tr>
 </table>
 
 ```bash
 sudo mkdir -p /etc/yuki
-echo https://example.org/yuki-index/main | sudo tee /etc/yuki/index_url
-sudo yuki keys trust main <публичный-ключ-ed25519>
+echo https://raw.githubusercontent.com/YOU/yuki-index/main | sudo tee /etc/yuki/index_url
+sudo yuki keys trust main <public-key>
 ```
 
 <table>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-3.svg" width="68" alt="3"></td>
-  <td valign="top">
-    <b>Устанавливайте системные пакеты и библиотеки проектов</b><br>
-    Поддерживаются как нативные подкоманды <code>yuki</code>, так и короткие флаги в стиле <code>pacman</code>.
-  </td>
-</tr>
+<tr><td width="96" valign="top"><img src="assets/num-3.svg" width="72" alt="3"></td><td valign="top"><b>Use it</b><br>pacman-style flags work</td><td valign="top" align="right"></td></tr>
 </table>
 
 ```bash
-yuki -Ss grep                  # поиск по индексу и описанию
-yuki -Si ripgrep               # карточка пакета, хеши, издатели и зависимости
-sudo yuki -S ripgrep pcre2     # установка одним планом и одной транзакцией
-sudo yuki -Syu                 # полное обновление системы одной транзакцией
-sudo yuki -Rs ripgrep          # удаление пакета вместе с ненужными зависимостями
-yuki add json-yukino           # добавление библиотеки в yuki.toml текущего проекта
-sudo yuki rollback             # атомарный откат последней системной транзакции
+yuki -Ss grep                  # search
+yuki -Si ripgrep               # description
+sudo yuki -S ripgrep pcre2     # install, one plan and one transaction
+sudo yuki -Syu                 # upgrade everything, also one transaction
+sudo yuki -Rs ripgrep          # remove with unneeded dependencies
+yuki related ripgrep           # what is linked to what
+sudo yuki rollback             # undo the last transaction
 ```
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
-
 <a name="how"></a>
-## <img src="assets/sec-priv.svg" height="36" align="absmiddle" alt=""> Пятифазная архитектура установки и разделение привилегий
+## <img src="assets/sec-priv.svg" height="34" align="absmiddle" alt=""> How an install runs
 
-Процесс `root` включается только для проверки подписей и атомарной записи в файловую систему. Вся работа с сетью, разбор внешних данных и сборка из исходников изолированы в непривилегированном процессе `nobody` (с автоматическим распознаванием окружения **PRoot / Termux** по `/proc/self/status`).
+Root appears only where the system must change, and it trusts nothing at face value.
 
 <table>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-1.svg" width="68" alt="1"></td>
-  <td valign="top"><b>Загрузка метаданных индекса в изолированном процессе</b><br><code>fork()</code> → сброс групп и UID (<code>setgroups</code>, <code>setgid</code>, <code>setuid(65534)</code>, <code>prctl(NO_NEW_PRIVS)</code>) → скачивание <code>.json</code> и <code>.sig</code> во временный каталог <code>stage/dl/entries/</code>.</td>
-  <td valign="top" align="right"><img src="assets/who-nobody.svg" height="28" alt="nobody"></td>
-</tr>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-2.svg" width="68" alt="2"></td>
-  <td valign="top"><b>Повторная криптографическая проверка в Root и согласие</b><br>Проверка подписей <code>Ed25519</code> (с доменом <code>yuki-v1</code>), ролей <code>publisher</code>, монотонного счётчика <code>seq/seen</code> и срока <code>expires</code>. Запрос подтверждения <code>[Y/n]</code> выводится до старта живой панели <code>LiveArea</code>.</td>
-  <td valign="top" align="right"><img src="assets/who-root.svg" height="28" alt="root"></td>
-</tr>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-3.svg" width="68" alt="3"></td>
-  <td valign="top"><b>Параллельное скачивание и песочница сборки</b><br>Пул потоков (до 16 воркеров) скачивает архивы и считает <code>BLAKE3</code> на лету; при отсутствии бинарника исходники собираются в <code>bubblewrap</code> (<code>--unshare-all</code>, без сети) и сверяются с подписанным хешем.</td>
-  <td valign="top" align="right"><img src="assets/who-nobody.svg" height="28" alt="nobody"></td>
-</tr>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-4.svg" width="68" alt="4"></td>
-  <td valign="top"><b>Карантин артефактов и предраспаковочный аудит архива</b><br>Root копирует обычные файлы в <code>stage/art/</code>, заново проверяет <code>BLAKE3</code>, проводит <code>audit_tar</code> (лимиты размера, запрет спецфайлов и обхода путей), распаковывает и восстанавливает права из заголовков tar.</td>
-  <td valign="top" align="right"><img src="assets/who-root.svg" height="28" alt="root"></td>
-</tr>
-<tr>
-  <td width="92" valign="top"><img src="assets/num-5.svg" width="68" alt="5"></td>
-  <td valign="top"><b>Журналируемая транзакция и фиксация в базе</b><br>Захват блокировки, резервные копии заменяемых файлов в <code>tx/&lt;id&gt;/bak</code>, синхронизация журнала <code>sync()</code>, атомарный <code>rename</code> и запись в <code>/var/lib/yuki/db/</code>. При сбое питания — автооткат при следующем запуске.</td>
-  <td valign="top" align="right"><img src="assets/who-root.svg" height="28" alt="root"></td>
-</tr>
+<tr><td width="96" valign="top"><img src="assets/num-1.svg" width="72" alt="1"></td><td valign="top"><b>The child brings index records</b><br><code>fork</code>, drop root, <code>no_new_privs</code></td><td valign="top" align="right"><img src="assets/who-nobody.svg" height="28" alt="nobody"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-2.svg" width="72" alt="2"></td><td valign="top"><b>Root re-verifies and builds the plan</b><br>signature, expiry, rollback, key roles, content confirmation, the "continue?" question</td><td valign="top" align="right"><img src="assets/who-root.svg" height="28" alt="root"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-3.svg" width="72" alt="3"></td><td valign="top"><b>Parallel download and build</b><br>thread pool, hashing in the worker; app builds run in bubblewrap without network and the result is checked against the signed hash</td><td valign="top" align="right"><img src="assets/who-nobody.svg" height="28" alt="nobody"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-4.svg" width="72" alt="4"></td><td valign="top"><b>Root copies to itself and checks files</b><br>BLAKE3, archive audit, path policy, safe symlinks, nobody processes killed</td><td valign="top" align="right"><img src="assets/who-root.svg" height="28" alt="root"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-5.svg" width="72" alt="5"></td><td valign="top"><b>A transaction with a journal</b><br>journal and backups hit the disk before the first change, auto-rollback after a crash</td><td valign="top" align="right"><img src="assets/who-root.svg" height="28" alt="root"></td></tr>
 </table>
-
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
 
 <a name="commands"></a>
-## <img src="assets/sec-grid.svg" height="36" align="absmiddle" alt=""> Карта команд и совместимость с pacman
+## <img src="assets/sec-grid.svg" height="34" align="absmiddle" alt=""> Commands
 
-Любая команда снабжена встроенной справкой (`yuki help <команда>`), диагностика кодов доступна через `yuki explain Y0301`, а при опечатке в имени команды работает нечёткий поиск по расстоянию Левенштейна.
+<code>yuki help &lt;command&gt;</code> gives examples, <code>yuki explain Y0301</code> explains any error, and typos get a suggestion.
 
 <table>
-<tr>
-  <th align="left" width="33%">Системные пакеты (<code>sudo</code>)</th>
-  <th align="left" width="33%">Поиск, граф и аудит</th>
-  <th align="left" width="34%">Проекты, ключи и реестр</th>
-</tr>
-<tr valign="top">
-<td>
+<tr><th align="left">System (<code>sudo</code>)</th><th align="left">Look around</th><th align="left">Projects and service</th></tr>
+<tr valign="top"><td>
 
-* `install` / `reinstall` — установка с планом
-* `uninstall [-s]` — удаление (+ зависимости)
-* `autoremove` — очистка пакетов-сирот
-* `upgrade` — обновление всей системы
-* `self-update` — безопасное обновление `yuki`
-* `hold` / `unhold` — заморозка версий
-* `rollback` / `history` — откат и журнал
+`install` `reinstall`<br>
+`uninstall [-s]` `autoremove`<br>
+`upgrade` `self-update`<br>
+`hold` `unhold`<br>
+`rollback` `history`
 
-</td>
-<td>
+</td><td>
 
-* `search` / `show` — поиск и карточка в индексе
-* `list` / `info` — установленные пакеты
-* `files` / `owns` — файлы пакета и владелец пути
-* `why` / `tree` / `rdeps` — дерево и причины установки
-* `related` / `graph [dot]` — граф связей (Graphviz)
-* `orphans` / `outdated` — сироты и обновления
-* `check` / `sys-audit` — целостность файлов по хешам
+`search` `show`<br>
+`list` `info` `files` `owns`<br>
+`why` `tree` `rdeps` `related`<br>
+`graph [dot]` `orphans`<br>
+`outdated` `check` `sys-audit`
 
-</td>
-<td>
+</td><td>
 
-* `add` / `remove` / `update` — зависимости в `yuki.toml`
-* `fetch` / `audit` — кэш и проверка проекта
-* `keys gen|trust|list|refresh` — ключи и ротация
-* `pack` — воспроизводимая сборка `.tar.zst`
-* `index add|cosign|check|catalog` — управление индексом
-* `theme` / `config` — палитра и настройки
-* `doctor` / `clean` / `selftest` — диагностика
+`add` `remove` `update`<br>
+`fetch` `audit`<br>
+`keys` `theme` `pack`<br>
+`index add|cosign|check|catalog`<br>
+`doctor` `config` `clean` `selftest`
 
-</td>
-</tr>
+</td></tr>
 </table>
 
-<details><summary><b>Таблица трансляции флагов в стиле pacman</b></summary>
+<details><summary><b>Flags like in pacman</b></summary>
 
-| Флаг `pacman` | Эквивалент в `yuki` | Флаг `pacman` | Эквивалент в `yuki` |
-| :--- | :--- | :--- | :--- |
-| `yuki -S <pkg>` | `yuki install <pkg>` | `yuki -Q` | `yuki list` |
-| `yuki -Syu` | `yuki upgrade` | `yuki -Qi <pkg>` | `yuki info <pkg>` |
-| `yuki -Ss <q>` | `yuki search <q>` | `yuki -Ql <pkg>` | `yuki files <pkg>` |
-| `yuki -Si <pkg>` | `yuki show <pkg>` | `yuki -Qo <path>` | `yuki owns <path>` |
-| `yuki -R <pkg>` | `yuki uninstall <pkg>` | `yuki -Qe` / `-Qd` | явные / установленные как зависимости |
-| `yuki -Rs <pkg>` | `yuki uninstall -s <pkg>` | `yuki -Qdt` | `yuki orphans` |
-| `yuki -Sc` / `-Scc` | `yuki clean` / `clean --all` | `yuki -Qu` / `-Qk` | `yuki outdated` / `yuki check` |
+| pacman | yuki | pacman | yuki |
+|---|---|---|---|
+| `-S pkg` | install | `-Q` | list |
+| `-Syu` | upgrade everything | `-Qi pkg` | info |
+| `-Ss word` | search | `-Ql pkg` | files |
+| `-Si pkg` | description | `-Qo path` | owns |
+| `-R pkg` | remove | `-Qe` / `-Qd` | explicit / dependencies |
+| `-Rs pkg` | with unneeded dependencies | `-Qdt` | orphans |
+| `-Sc` / `-Scc` | clean the cache | `-Qu` / `-Qk` | outdated / check files |
 
 </details>
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
-
 <a name="security"></a>
-## <img src="assets/sec-sign.svg" height="36" align="absmiddle" alt=""> Контуры криптографической и системной защиты
+## <img src="assets/sec-sign.svg" height="34" align="absmiddle" alt=""> Security
 
-<table>
-<tr>
-  <th align="left" width="28%">Вектор угрозы</th>
-  <th align="left" width="38%">Механизм защиты в архитектуре yuki</th>
-  <th align="left" width="34%">Модули реализации</th>
-</tr>
-<tr>
-  <td><b>Подмена индекса или архива в сети</b></td>
-  <td>Двойная подпись <code>Ed25519</code> (с префиксом домена <code>yuki-v1\n</code>) и проверка <code>BLAKE3</code> как в воркере, так и повторно в <code>root</code>.</td>
-  <td><code>verify.ykn</code> · <code>index.ykn</code></td>
-</tr>
-<tr>
-  <td><b>Атака отката (Rollback) и заморозки</b></td>
-  <td>Монотонный счётчик ревизии <code>seq</code> (хранится в локальной базе <code>seen</code>) и жёсткий срок годности метаданных <code>expires</code>.</td>
-  <td><code>index.ykn</code> · <code>sysplan.ykn</code></td>
-</tr>
-<tr>
-  <td><b>Разделение ролей ключей CI и мейнтейнеров</b></td>
-  <td>Ключ <code>renewer</code> может только продлевать срок действия индекса; выпуск версий требует порога подписей <code>publisher</code> (<code>cosign</code>).</td>
-  <td><code>trust.ykn</code> · <code>rotation.ykn</code></td>
-</tr>
-<tr>
-  <td><b>Вредоносные пути и спецфайлы в tar</b></td>
-  <td>Предраспаковочный <code>audit_tar</code>, разрешение только <code>usr/</code>, <code>opt/</code>, <code>etc/</code>, запрет спецфайлов и лимиты на размер/число файлов.</td>
-  <td><code>verify.ykn</code> · <code>policy.ykn</code></td>
-</tr>
-<tr>
-  <td><b>Компрометация при сетевом разборе или сборке</b></td>
-  <td>Сброс привилегий до <code>nobody</code> + <code>no_new_privs</code>, сборка в изолированном <code>bubblewrap</code> без сети, честная детекция PRoot.</td>
-  <td><code>priv.ykn</code> · <code>stage.ykn</code> · <code>sysbuild.ykn</code></td>
-</tr>
-<tr>
-  <td><b>Сбой питания или падение посреди установки</b></td>
-  <td>Предварительный бэкап заменяемых файлов и синхронизированный на диск <code>journal</code> с автоматическим откатом при старте.</td>
-  <td><code>apply.ykn</code> · <code>sysdb.ykn</code></td>
-</tr>
-</table>
+| Threat | What stops it |
+|---|---|
+| Swapped archive or index | BLAKE3 + Ed25519, re-verified as root |
+| Rollback and a frozen index | `seq`, `expires`, local `seen` state |
+| Leaked renewal key | the `renewer` role cannot sign release content |
+| Leaked publisher key | publisher threshold (`publish_threshold`), `cosign`, rotation and revocation |
+| Malicious archive | audit before unpack, path policy, symlink checks, size limits |
+| Network or build compromise | privilege separation, bubblewrap, signed result hash |
+| Power loss mid-install | journal on disk, auto-rollback on the next run |
 
-Подробная спецификация модели угроз и границ доверия приведена в [`DESIGN.md`](DESIGN.md).
-
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
+The full story, including **what is not protected**, is in [`DESIGN.md`](DESIGN.md) (Russian).
 
 <a name="look"></a>
-## <img src="assets/sec-palette.svg" height="36" align="absmiddle" alt=""> Адаптивный терминальный интерфейс и темы
+## <img src="assets/sec-palette.svg" height="34" align="absmiddle" alt=""> How it looks
 
 <table>
 <tr>
-<td><img src="assets/preview/yuki-sys-install.png" alt="sudo yuki install"></td>
-<td><img src="assets/preview/yuki-sys-errors.png" alt="ошибки с подсказками"></td>
+<td><img src="assets/preview/yuki-sys-install.png" alt="<code>sudo yuki install</code>"></td>
+<td><img src="assets/preview/yuki-sys-errors.png" alt="every error carries <code>help</code> and a <code>yuki explain</code> link"></td>
 </tr>
 <tr>
-<td align="center"><sub>Многофазная установка <code>sudo yuki install</code></sub></td>
-<td align="center"><sub>Структурированная диагностика с кодом и ссылкой на <code>yuki explain</code></sub></td>
+<td align="center"><sub><code>sudo yuki install</code></sub></td>
+<td align="center"><sub>every error carries <code>help</code> and a <code>yuki explain</code> link</sub></td>
 </tr>
 </table>
 
-<p align="center"><img src="assets/preview/yuki-modes.png" width="540" alt="truecolor, ansi и ASCII"></p>
-<p align="center"><sub>Автоматическая адаптация терминала: <code>TrueColor → 256 → ANSI 16 → Mono</code> и <code>UTF-8 → ASCII</code> (с поддержкой <code>NO_COLOR=1</code>)</sub></p>
+<p align="center"><img src="assets/preview/yuki-modes.png" width="520" alt="One result in three modes: truecolor, your terminal colors (<code>palette = "ansi"</code>) and ASCII"></p>
+<p align="center"><sub>One result in three modes: truecolor, your terminal colors (<code>palette = "ansi"</code>) and ASCII</sub></p>
 
-Внешний вид настраивается одним файлом `theme.toml` (пользовательским в `~/.config/yuki/theme.toml` или системным в `/etc/yuki/theme.toml`):
+A single theme, tunable through `theme.toml`: colors, symbols, animation. Everything degrades on
+its own: truecolor → 256 → 16 → no color, UTF-8 → ASCII, a live terminal → a plain log for CI. `NO_COLOR=1` works.
 
-<p align="center"><img src="assets/palette.svg" width="580" alt="палитра темы"></p>
+<p align="center"><img src="assets/palette.svg" width="560" alt="theme palette"></p>
 
 ```toml
-# ~/.config/yuki/theme.toml  или  /etc/yuki/theme.toml
-palette = "ansi"            # "rgb" (TrueColor) | "ansi" (цвета терминала) | "mono"
+# ~/.config/yuki/theme.toml  or  /etc/yuki/theme.toml
+palette = "ansi"            # "rgb" | "ansi" (terminal colors) | "mono"
 
 [colors]
 accent = "ansi:cyan"
-good   = "#a6e3a1"
-warn   = "#f9e2af"
 bad    = "#f38ba8+bold"
 
 [style]
-animation    = true         # по умолчанию включена при живом интерактивном stdout
+animation = true
 bar_gradient = true
 ```
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
+> The pictures illustrate what the code does rather than real runs. Package names, hashes and numbers in them are invented.
 
 <a name="index"></a>
-## <img src="assets/sec-graph.svg" height="36" align="absmiddle" alt=""> Свой индекс пакетов за 5 шагов
+## <img src="assets/sec-graph.svg" height="34" align="absmiddle" alt=""> Your own index in an evening
 
 <table>
-<tr><td width="92" valign="top"><img src="assets/num-1.svg" width="68" alt="1"></td><td valign="top"><b>Создайте репозиторий из шаблона</b><br>Скопируйте каталог <a href="yuki-index-template/"><code>yuki-index-template/</code></a>, включите защиту ветки <code>main</code> и правила <code>CODEOWNERS</code>.</td></tr>
-<tr><td width="92" valign="top"><img src="assets/num-2.svg" width="68" alt="2"></td><td valign="top"><b>Сгенерируйте ключи Ed25519</b><br>Выполните <code>yuki keys gen main</code>, добавьте публичный ключ в <code>keys/trusted_keys</code> с ролью <code>publisher</code>, а секретный ключ храните офлайн.</td></tr>
-<tr><td width="92" valign="top"><img src="assets/num-3.svg" width="68" alt="3"></td><td valign="top"><b>Упакуйте воспроизводимый архив</b><br>Команда <code>yuki pack</code> соберёт детерминированный архив <code>.tar.zst</code> с обнулением <code>mtime</code> и проверит политику файловых путей.</td></tr>
-<tr><td width="92" valign="top"><img src="assets/num-4.svg" width="68" alt="4"></td><td valign="top"><b>Опубликуйте и подпишите запись</b><br>Выполните <code>yuki index add релиз.json main</code> (при пороге <code>publish_threshold &gt; 1</code> второй мейнтейнер добавляет подпись через <code>yuki index cosign</code>).</td></tr>
-<tr><td width="92" valign="top"><img src="assets/num-5.svg" width="68" alt="5"></td><td valign="top"><b>Включите автоматическую проверку и продление в CI</b><br>Пайплайн проверяет каждый PR через <code>yuki index check download</code> и раз в месяц продлевает <code>expires</code> отдельным ключом <code>renewer</code>.</td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-1.svg" width="72" alt="1"></td><td valign="top"><b>Repository</b><br>copy <code>yuki-index-template/</code>, turn on branch protection for <code>main</code> and CODEOWNERS</td><td valign="top" align="right"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-2.svg" width="72" alt="2"></td><td valign="top"><b>Keys</b><br><code>yuki keys gen main</code>, the public part into <code>keys/trusted_keys</code>, the secret stays offline</td><td valign="top" align="right"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-3.svg" width="72" alt="3"></td><td valign="top"><b>Package</b><br><code>yuki pack</code> builds the archive and runs the policy checks, the release is published on GitHub</td><td valign="top" align="right"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-4.svg" width="72" alt="4"></td><td valign="top"><b>Record</b><br><code>yuki index add release.json main</code> downloads, verifies and signs; a second publisher runs <code>cosign</code></td><td valign="top" align="right"></td></tr>
+<tr><td width="96" valign="top"><img src="assets/num-5.svg" width="72" alt="5"></td><td valign="top"><b>CI</b><br><code>yuki index check download</code> on every PR and monthly key renewal with the <code>renewer</code> key</td><td valign="top" align="right"></td></tr>
 </table>
 
-Полное руководство мейнтейнера: [`TUTORIAL.md`](TUTORIAL.md). Готовый шаблон индекса: [`yuki-index-template/`](yuki-index-template/).
-
-<picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
+Step by step: [`TUTORIAL.md`](TUTORIAL.md) (Russian). Repository template: [`yuki-index-template/`](yuki-index-template/).
 
 <a name="faq"></a>
-## <img src="assets/sec-q.svg" height="36" align="absmiddle" alt=""> Частые вопросы (FAQ)
+## <img src="assets/sec-q.svg" height="34" align="absmiddle" alt=""> FAQ
 
-<details><summary><b>Нужны ли мне выделенные серверы для хостинга пакетов?</b></summary>
-Нет. Индекс хранится в обычном Git-репозитории, а архивы раздаются со статических HTTPS-релизов и зеркал. Клиент сам проверяет подписи <code>Ed25519</code> и хеши <code>BLAKE3</code>.
+<details><summary><b>Do I need my own servers?</b></summary>
+No. The index lives in a git repository, the client fetches files over HTTPS (you can list several mirrors) and verifies the signatures itself.
 </details>
 
-<details><summary><b>Как yuki работает внутри PRoot / Termux на Android?</b></summary>
-Модуль <code>priv.ykn</code> определяет эмуляцию <code>PRoot</code> по реальному UID ядра в <code>/proc/self/status</code> (в режиме fail-closed) и корректно пропускает системные вызовы смены UID и <code>kill(-1)</code>, которые иначе завершили бы сеанс Termux.
+<details><summary><b>Why is system installation only via sudo?</b></summary>
+Installing changes the system. Networking and building run without privileges, root re-verifies everything and applies a single journaled transaction.
 </details>
 
-<details><summary><b>Что происходит, если для моей архитектуры нет готового бинарника?</b></summary>
-<code>yuki</code> покажет сборочный рецепт, список исходников и хешей, предупредит о запуске сборки и после вашего согласия соберёт пакет внутри изолированной песочницы <code>bubblewrap</code> без доступа к сети.
+<details><summary><b>What if there is no prebuilt binary?</b></summary>
+For applications yuki either installs a signed prebuilt binary or builds from source: the build runs in bubblewrap (no network, read-only root, only the build directory writable), and the build command, the file list and the signed result hash are shown and require your consent. In scripts the flag is <code>--allow-build</code>. Without bubblewrap the build is refused until the admin explicitly allows unsandboxed builds.
 </details>
 
-<details><summary><b>Как безопасно отозвать скомпрометированный ключ?</b></summary>
-Опубликуйте подписанный файл <code>keys/rotation.json</code> с порогом подписей действующих издателей и выполните <code>sudo yuki keys refresh</code>. Отозванный ключ заносится в <code>revoked_keys</code> и никогда не может быть доверен повторно.
+<details><summary><b>How do libraries differ?</b></summary>
+A <code>kind = "lib"</code> entry is source-only: no prebuilt library artifacts are accepted anywhere, and libraries use the C FFI. If the source archive contains a <code>build.ykn</code> script, its contents are displayed and it runs only after explicit confirmation. Library builds skip the heavy app sandbox and network rules.
+</details>
+
+<details><summary><b>How does yuki update itself?</b></summary>
+<code>sudo yuki self-update</code>. The new binary must be able to start, otherwise the update rolls back.
+</details>
+
+<details><summary><b>A key leaked. What now?</b></summary>
+Sign a <code>rotation.json</code> revoking it with enough keys and run <code>sudo yuki keys refresh</code>. A revoked key never comes back.
+</details>
+
+<details><summary><b>Does this work?</b></summary>
+Yes, as verified: both source trees compile with the Yukino toolchain, <code>yuki selftest</code> passes (hashing, signing, verification, threads, files) and the language server reports no diagnostics on the sources. What the security model deliberately does not cover is listed in <code>DESIGN.md</code>.
 </details>
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/divider-dark.svg"><img alt="" src="assets/divider-light.svg" width="880"></picture>
 
-<p align="center"><sub><b>yuki</b> · пакетный менеджер для Yukino · <a href="TUTORIAL.md">руководство по индексу</a> · <a href="DESIGN.md">архитектура и модель угроз</a></sub></p>
+<p align="center"><sub>yuki · for <a href="https://github.com/yukitsuri/yukino">Yukino</a> · <a href="TUTORIAL.md">tutorial</a> · <a href="DESIGN.md">security model</a> (Russian)</sub></p>

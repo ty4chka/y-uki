@@ -5,11 +5,11 @@
 
 load core.utils: cast
 load core.panic: panic
-load std.fs.files: File, file_open_read, file_open_write, file_metadata, file_remove
+load std.fs.files: file_open_read, file_open_write, file_metadata, file_remove
 load std.fs.dirs: dir_exists, dir_walk
 load std.compress: compress_file
 load std.strings: slice
-load .errors: YukiError, err
+load .errors: err
 load .util: str_starts, str_ends
 
 // Octal number exactly `digits` wide (zero-padded).

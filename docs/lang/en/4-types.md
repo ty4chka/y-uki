@@ -1,5 +1,7 @@
 # Type System and Pattern Matching
 
+> **English** · [Русский](../ru/4-types.md)
+
 Yukino uses a strict static type system with bidirectional type inference, compile-time `null` control, and powerful pattern matching.
 
 ## Contents

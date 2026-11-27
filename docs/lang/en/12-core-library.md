@@ -1,5 +1,7 @@
 # Core Library: core
 
+> **English** · [Русский](../ru/12-core-library.md)
+
 The `core` package is the fundamental low-level library of the Yukino programming language. It contains runtime primitives, type conversion utilities, low-level memory operations, panic handling, process management, and compiler-integrated macros.
 
 The `core` package is automatically linked by the compiler when listed in the manifest `includes = ["core", "stdlib"]`, and its symbols are imported using the standard `load` directive.

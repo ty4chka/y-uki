@@ -1,5 +1,7 @@
 # Module std.process
 
+> **English** · [Русский](../../ru/stdlib/10-process.md)
+
 The `std.process` module provides facilities for spawning child processes, configuring standard I/O streams (stdin/stdout/stderr), capturing process output, interacting through system shells, and managing the current process state and environment variables.
 
 ---

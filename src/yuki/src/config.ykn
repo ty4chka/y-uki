@@ -4,11 +4,11 @@ load core.panic: panic
 load std.fs.defaults: dir_app_config, dir_app_cache, dir_app_data
 load std.fs.dirs: dir_create_all
 load std.fs.files: file_exists, file_read_text
-load std.env: get_env, get_or
+load std.env: get_or
 load std.sysinfo: os_name, cpu_arch
 load std.strings: trim, eq, slice, contains
 load .util: str_ends, join2, sjoin, str_lines, str_lower, str_split
-load .errors: YukiError, err
+load .errors: err
 
 public static MAX_ENTRIES: int64 = 20000
 public static MAX_TOTAL: int64 = 536870912     // 512 MiB unpacked

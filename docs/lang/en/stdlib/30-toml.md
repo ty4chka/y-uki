@@ -1,5 +1,7 @@
 # Module std.toml
 
+> **English** · [Русский](../../ru/stdlib/30-toml.md)
+
 The `std.toml` module provides high-performance tools for parsing, safe data extraction, validation, and serialization of configuration documents in the TOML (Tom's Obvious Minimal Language) v1.0.0 format in pure Yukino without external dependencies.
 
 ---

@@ -18,9 +18,9 @@
 
 load core.panic: panic
 load std.io: println
-load std.json: JsonValue, json_parse
+load std.json: json_parse
 load std.strings: eq
-load .errors: YukiError, err
+load .errors: err
 load .catalog: verified_catalog
 load .ui: info, card, c_accent, c_good, c_dim
 load .theme: sym

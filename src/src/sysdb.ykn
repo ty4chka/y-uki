@@ -10,7 +10,7 @@ load std.fs.dirs: dir_create_all, dir_exists, dir_list, dir_remove_all
 load std.fs.paths: path_file_name
 load std.strings: trim, eq, slice, parse_int
 load .util: str_index, join2, sjoin, str_lines, str_split, int_str
-load .errors: YukiError, err
+load .errors: err
 load .config: state_dir, resolve_config_file
 
 public struct PkgRecord {
@@ -72,7 +72,7 @@ public fun db_read(name: string) -> PkgRecord {
         signer: kv_get(ls, "signer"),
         origin: kv_get(ls, "origin"),
         deps: kv_get(ls, "deps"),
-        installed_at: parse_int(kv_get(ls, "installed_at")) ?? 0,
+        installed_at: cast(parse_int(kv_get(ls, "installed_at")) ?? 0, "int64"),
         reason: kv_get(ls, "reason"),
         summary: kv_get(ls, "summary"),
     }

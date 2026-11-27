@@ -1,5 +1,7 @@
 # Macro System and Built-in Macros
 
+> **English** · [Русский](../ru/10-macros.md)
+
 Macros in Yukino are expanded during syntactic analysis, before type checking and LLVM IR generation. The macro system supports both user-defined hygienic macros declared with `define` and a set of built-in compiler macros.
 
 ---

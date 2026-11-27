@@ -1,5 +1,7 @@
 # Module std.sharedc
 
+> **English** · [Русский](../../ru/stdlib/19-sharedc.md)
+
 The `std.sharedc` (Shared C) module provides a cross-platform interface for loading dynamic shared libraries (`.so` on Linux/Unix, `.dll` on Windows, `.dylib` on macOS), resolving exported C symbols into pointers, and calling native C functions via `cfun` pointer casts. The module supports standard POSIX dynamic linking flags (`RTLD_NOW`, `RTLD_LAZY`, `RTLD_GLOBAL`, `RTLD_LOCAL`), process self-namespace resolution, safe descriptor closing, and platform-specific library filename formatting.
 
 ---

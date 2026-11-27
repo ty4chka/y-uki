@@ -150,9 +150,14 @@ hello
 
 ## 7. Библиотеки для проектов
 
+Библиотеки собираются **только из исходников**: `kind = "lib"` не принимает готовых бинарных артефактов,
+запись несёт блок `src` с архивом исходников. Если в архиве есть `build.ykn` (сборочный скрипт Yukino),
+его содержимое показывается пользователю и выполняется только после явного подтверждения.
+
 ```json
 { "name": "json-yukino", "kind": "lib", "version": "1.2.0",
-  "url": "https://github.com/YOU/json-yukino/archive/<commit>.tar.gz", "deps": ["ansi-kit@2.0.1"] }
+  "src": { "url": "https://github.com/YOU/json-yukino/archive/<commit>.tar.gz" },
+  "deps": ["ansi-kit@2.0.1"] }
 ```
 
 ```bash

@@ -7,7 +7,7 @@ load std.fs.files: file_exists, file_remove, file_rename, file_size
 load std.hash.blake3: blake3_file
 load std.strings: slice
 load .util: str_ends, join2, str_lower
-load .errors: YukiError, err
+load .errors: err
 load .config: cache_dir, ensure_dirs, MAX_ENTRIES, MAX_TOTAL, MAX_FILE, MAX_DOWNLOAD
 load .fetch: download, check_url
 load .verify: VerifyError, check_blake3, audit_tar, checksum_ok_format
@@ -96,7 +96,7 @@ public fun fetch_unpinned(url: string) -> string {
     if file_exists(tmp) {
         file_remove(tmp)
     }
-    set got_bytes: int64 = download(url, tmp, MAX_DOWNLOAD, "")
+    download(url, tmp, MAX_DOWNLOAD, "")
     set hex = ""
     sus {
         audit_tar(tmp, MAX_ENTRIES, MAX_TOTAL, MAX_FILE, false)

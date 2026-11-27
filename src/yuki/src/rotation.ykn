@@ -8,7 +8,6 @@
 // Applied only when at least threshold DIFFERENT trusted keys with the
 // "publisher" role signed it. A "renewer" key cannot rotate keys.
 
-load core.utils: cast
 load core.panic: panic
 load std.json: json_parse
 load std.hash: blake3_str

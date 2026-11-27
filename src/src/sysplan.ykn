@@ -11,9 +11,9 @@ load std.fs.dirs: dir_create_all
 load std.fs.paths: path_parent
 load std.env: get_or
 load std.strings: eq, trim, slice
-load .errors: YukiError, err
+load .errors: err
 load .config: MAX_INDEX_FILE
-load .index: Release, EntryText, fetch_entry, resolve_text, index_get
+load .index: EntryText, fetch_entry, resolve_text, index_get
 load .sysdb: db_has, db_read
 load .util: dep_name, dep_version, str_index, join2, str_lines
 
@@ -129,7 +129,7 @@ public fun plan_nodes(dl: string, ref roots: string[], fetch_missing: bool, reco
 // Child "plan" step: fetch and parse all records of the tree.
 public fun child_plan(dl: string) {
     set roots = read_roots(dl)
-    set nodes = plan_nodes(dl, ref roots, true, false)
+    plan_nodes(dl, ref roots, true, false)
 }
 
 // Child "keys" step: fetch the key rotation.

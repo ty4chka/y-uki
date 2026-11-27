@@ -1,5 +1,7 @@
 # Module std.threads
 
+> **English** · [Русский](../../ru/stdlib/3-threads.md)
+
 The `std.threads` module provides low-level control over operating system threads and mutual exclusion primitives (mutexes): spawning background threads, waiting for completion (join), pause management (`sleep`), yielding processor time (`yield_now`), detecting processor concurrency, and synchronizing shared resources.
 
 ---

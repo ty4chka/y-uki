@@ -1,5 +1,7 @@
 # Standard Library (stdlib): Overview
 
+> **English** · [Русский](../../ru/stdlib/0-overview.md)
+
 The Yukino standard library is designed with a modular architecture, offering high-level abstractions, collections, system calls, and utilities without the overhead of a heavy runtime.
 
 ## Table of Contents

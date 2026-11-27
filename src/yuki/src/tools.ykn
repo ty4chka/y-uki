@@ -5,8 +5,7 @@
 load core.utils: cast
 load core.panic: panic
 load std.io: print, println
-load std.env: get_or
-load std.json: JsonValue, json_parse
+load std.json: json_parse
 load std.fs.files: file_exists, file_read_text, file_write_text, file_remove, file_metadata, file_size
 load std.fs.dirs: dir_exists, dir_walk, dir_remove_all, dir_create_all
 load std.hash.blake3: blake3_file
@@ -21,20 +20,19 @@ load .theme: sym, theme_palette, theme_path, animation_on
 load .priv: is_root
 load .stage: stage_create, stage_remove, run_child, write_roots
 load .view: InstallView
-load .sysplan: PNode, plan_nodes
+load .sysplan: plan_nodes
 load .sysbuild: have_bwrap, build_policy
-load .sysdb: db_names, db_read, db_has, db_files, dependents_of, orphans, is_explicit, held_names, is_held
+load .sysdb: db_names, db_read, db_has, dependents_of, orphans, is_explicit, held_names, is_held
 load .sysinstall: cmd_sys_install
 load .catalog: verified_catalog
 load .trust: trusted_keys, threshold
-load .verify: VerifyError, verify_text_with_any, audit_tar
+load .verify: audit_tar
 load .policy: policy_check
 load .tarpack: tar_pack_tree
-load .index: seen_get, seen_set
 load .fetch: http_text
 load .explain: explain_lines
 load .cmdlist: help_lines, suggest, completion_script
-load .util: now_secs, valid_name, valid_version, ver_cmp, str_starts, str_index, join2, sjoin, str_lines, str_lower, str_pad_end, str_split, str_ends, int_str, fmt_bytes, fmt_speed
+load .util: now_secs, valid_name, valid_version, ver_cmp, str_starts, str_index, join2, sjoin, str_lines, str_lower, str_pad_end, str_split, str_ends, int_str, fmt_bytes
 
 fun yn(b: bool) -> string {
     if b {
@@ -477,8 +475,8 @@ public fun cmd_doctor() {
 
     set cfg = config_dir()
     if dir_exists(cfg) {
-        set mask: uint32 = 18
-        set zero: uint32 = 0
+        static mask: uint32 = 18
+        static zero: uint32 = 0
         set bits: uint32 = file_metadata(cfg).mode & mask
         chk(bits == zero, cfg + " is not writable by others", cfg + " is writable by group/others", "sudo chmod go-w " + cfg + "   (anyone could add trusted keys)", ref ~problems)
     }
@@ -623,7 +621,7 @@ public fun cmd_explain(code: string) {
     if str_starts(raw, "y") {
         rewrite raw = slice(raw, 1, raw.len())
     }
-    set n: int64 = parse_int(raw) ?? 0
+    set n: int64 = cast(parse_int(raw) ?? 0, "int64")
     set l = explain_lines(n)
     if l.len() == 0 {
         panic(err("no explanation for \"" + code + "\"", 201, code))
@@ -720,7 +718,7 @@ public fun cmd_pack(name: string, dir: string, out: string) {
         panic(err(int_str(problems) + " path(s) break the install policy", 721, dir))
     }
     tar_pack_tree(out, dir)
-    set rep = audit_tar(out, MAX_ENTRIES, MAX_TOTAL, MAX_FILE, true)
+    audit_tar(out, MAX_ENTRIES, MAX_TOTAL, MAX_FILE, true)
     set checksum = "blake3:" + blake3_file(out)
     ok("packed " + int_str(count) + " files " + c_dim("(" + fmt_bytes(file_size(out)) + ")"))
     ok("archive audit passed")

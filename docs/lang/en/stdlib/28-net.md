@@ -1,5 +1,7 @@
 # Module std.net
 
+> **English** · [Русский](../../ru/stdlib/28-net.md)
+
 The `std.net` module provides a comprehensive, high-level networking stack for the Yukino programming language: IPv4/IPv6 address parsing and DNS resolution, reliable stream communication via TCP (`TcpStream`, `TcpListener`), datagram messaging via UDP (`UdpSocket`), cross-platform I/O readiness multiplexing with non-blocking sockets (`SocketPoller`), TLS/HTTPS encryption (`TlsStream`, `TlsServerConfig`), an HTTP/1.1 protocol codec (`HttpRequest`, `HttpResponse`, `HttpHeaders`), an embedded HTTP/HTTPS server (`HttpServer`, `HttpsServer`), and a high-level requests client (`HttpClient`, `get`, `post`, `post_json`).
 
 ---

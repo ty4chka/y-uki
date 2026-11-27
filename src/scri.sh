@@ -1,6 +1,6 @@
-#!/data/data/com.termux/files/usr/bin/sh
-# Step 1 (run in Termux): build and push a test yuki index with the hello package.
-# Run:  sh 1-termux-index.sh
+#!/bin/sh
+# Build and push a test yuki index with the hello package.
+# Run:  sh scri.sh
 # Prerequisites: working yuki, a `test` key (yuki keys gen test), git,
 # the ty4chka/yuki-index repo (public), a hello-1.0.0 release with an archive, and gh auth login.
 set -e
@@ -23,7 +23,7 @@ die() { printf '\nОШИБКА: %s\n' "$*"; exit 1; }
 
 say "проверки"
 command -v yuki >/dev/null || die "команда yuki не найдена"
-command -v git >/dev/null || die "нет git: pkg install git"
+command -v git >/dev/null || die "нет git: установите git"
 PUB="$(yuki keys export "$KEY")" || die "нет ключа $KEY: yuki keys gen $KEY"
 [ "${#PUB}" = "64" ] || die "странный публичный ключ: $PUB"
 echo "ключ $KEY: $PUB"
@@ -75,15 +75,4 @@ echo "индекс: $INDEX_URL"
 echo "чтобы работали yuki search/install: export YUKI_INDEX=$INDEX_URL   (или запишите URL в <config>/index_url)"
 echo "raw.githubusercontent.com кеширует до нескольких минут: подождите перед следующим шагом."
 
-# Client setup: drop the binary and the second script into Ubuntu (proot-distro), if already installed
-ROOTFS="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/proot-distro/installed-rootfs/ubuntu"
-if [ -d "$ROOTFS" ] && [ -f "$HOME/bin/yuki-real" ]; then
-  mkdir -p "$ROOTFS/usr/local/bin" "$ROOTFS/root"
-  cp "$HOME/bin/yuki-real" "$ROOTFS/usr/local/bin/yuki"
-  chmod +x "$ROOTFS/usr/local/bin/yuki"
-  [ -f "$HOME/2-ubuntu-client.sh" ] && cp "$HOME/2-ubuntu-client.sh" "$ROOTFS/root/2-ubuntu-client.sh"
-  echo "бинарь yuki скопирован в Ubuntu. Дальше: proot-distro login ubuntu -- sh /root/2-ubuntu-client.sh"
-else
-  echo "Ubuntu не установлен: pkg install proot-distro && proot-distro install ubuntu, потом запустите этот скрипт ещё раз."
-fi
 

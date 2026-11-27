@@ -1,5 +1,7 @@
 # Module std.stdotool
 
+> **English** · [Русский](../../ru/stdlib/25-stdotool.md)
+
 The `std.stdotool` (Standard Output Tool) module provides utilities for dynamic visual rendering in standard terminal `stdout`. Unlike full-screen TUI toolkits that capture the terminal via private alternate screen buffers, `stdotool` operates directly within normal console scrolling flow, preserving previous output history. It pairs low-level cursor and line manipulation primitives with flexible visual building blocks: a cyclic custom animation frame player (`Frames`), a customizable progress bar constructor (`Bar`), and in-place single-line (`LiveLine`) and multi-line (`LiveArea`) flicker-free live re-rendering controllers (ideal for multi-download animations like `pacman -Syyu`).
 
 ---

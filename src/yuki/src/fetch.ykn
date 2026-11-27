@@ -4,10 +4,10 @@
 
 load core.utils: cast
 load core.panic: panic
-load std.net: tcp_connect, tls_connect, TlsStream, TlsError
+load std.net: tcp_connect, tls_connect, TlsError
 load std.strings: trim, slice, contains, eq, parse_int
-load std.fs.files: File, file_open_write, file_remove, file_write_text
-load .errors: YukiError, err
+load std.fs.files: file_open_write, file_remove, file_write_text
+load .errors: err
 load .config: host_allowed
 load .util: now_ms, str_starts, str_index, str_lower, str_split, int_str
 
@@ -285,7 +285,7 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
     }
 
     set chunked = contains(str_lower(header_value(ref hl, "transfer-encoding")), "chunked")
-    set clen: int64 = parse_int(header_value(ref hl, "content-length")) ?? -1
+    set clen: int64 = cast(parse_int(header_value(ref hl, "content-length")) ?? -1, "int64")
     if chunked {
         rewrite clen = -1
     }
@@ -319,7 +319,7 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
         }
         // A truncated body must not look like success: a short Content-Length
         // body or a chunked stream without its terminal zero chunk fails (P0).
-        if (clen >= 0 && received < clen) || (chunked && rd.state != CHUNK_STATE_DONE) {
+        if clen >= 0 && received < clen || chunked && rd.state != CHUNK_STATE_DONE {
             panic(err("download was cut short", 408, url))
         }
         return Response { status: status, location: "", body: body, received: received }
@@ -408,19 +408,25 @@ fun absolute_location(current: string, loc: string) -> string {
 }
 
 fun get_follow(url: string, dest: string, max_bytes: int64, prog_path: string) -> Response {
-    set cur = url
-    for hop in 0..6 {
-        set r = fetch_once(cur, dest, max_bytes, prog_path)
-        if r.status == 301 || r.status == 302 || r.status == 303 || r.status == 307 || r.status == 308 {
-            if r.location.len() == 0 {
-                panic(err("redirect without Location header", 405, cur))
-            }
-            rewrite cur = absolute_location(cur, r.location)
-        } else {
-            return r
-        }
+    return get_follow_hops(url, url, dest, max_bytes, prog_path, 0)
+}
+
+// Redirect following as recursion with an explicit hop bound: a loop that ends
+// in a tail panic trips the tooling flow analysis, which reports a missing
+// return there. The first argument stays the original url for the exhaustion
+// error, the second is the current redirect target.
+fun get_follow_hops(url: string, cur: string, dest: string, max_bytes: int64, prog_path: string, hop: int64) -> Response {
+    if hop >= 6 {
+        panic(err("too many redirects", 405, url))
     }
-    panic(err("too many redirects", 405, url))
+    set r = fetch_once(cur, dest, max_bytes, prog_path)
+    if r.status == 301 || r.status == 302 || r.status == 303 || r.status == 307 || r.status == 308 {
+        if r.location.len() == 0 {
+            panic(err("redirect without Location header", 405, cur))
+        }
+        return get_follow_hops(url, absolute_location(cur, r.location), dest, max_bytes, prog_path, hop + 1)
+    }
+    return r
 }
 
 // Fetches a small text resource (index record, signature) and returns the body.

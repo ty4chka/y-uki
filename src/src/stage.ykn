@@ -26,7 +26,6 @@ load .sysplan: child_plan, child_keys, child_catalog
 load .sysbuild: child_fetch
 load .pool: pool_paint, pool_ok
 load .verify: VerifyError
-load .view: InstallView
 load .util: now_ms, join2, sjoin, str_split, int_str
 
 fun stage_token() -> string {
@@ -35,7 +34,7 @@ fun stage_token() -> string {
 }
 
 public fun stage_create() -> string {
-    set m700: uint32 = 448
+    static m700: uint32 = 448
     if !is_root() {
         // rootless requests (search, show, outdated): working dir in temp with a crypto-random name and 0700 perms
         set top = join2(dir_temp(), "yuki-" + stage_token())
@@ -50,8 +49,8 @@ public fun stage_create() -> string {
     }
     set base = join2(state_dir(), "stage")
     dir_create_all(base)
-    set m711: uint32 = 457
-    set nb: uint32 = 65534
+    static m711: uint32 = 457
+    static nb: uint32 = 65534
     chmod(base, m711)
     set stage = join2(base, stage_token())
     dir_create_all(stage)
@@ -145,7 +144,7 @@ public fun run_child(stage: string, mode: string, ref ~view: InstallView, ref jo
         if file_exists(join2(dl, "ERROR")) {
             set raw = file_read_text(join2(dl, "ERROR"))
             set l = str_split(raw, "\n")
-            set n: int64 = parse_int(trim(l[0])) ?? 0
+            set n: int64 = cast(parse_int(trim(l[0])) ?? 0, "int64")
             if l.len() >= 2 && n >= 100 && n <= 999 {
                 rewrite code = cast(n, "int32")
                 rewrite why = clean_msg(slice(raw, l[0].len() + 1, raw.len()))

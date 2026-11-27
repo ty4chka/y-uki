@@ -1,5 +1,7 @@
 # Workspaces and Multi-Package Projects (yukispace.toml)
 
+> **English** · [Русский](../ru/15-workspaces.md)
+
 For managing monorepos, modular architectures, and coordinated development of multiple interrelated libraries and applications, Yukino provides a **universal workspace** mechanism (`Workspace`).
 
 Unlike single isolated projects managed by a standalone `yuki.toml` or `lib.toml` file, a workspace groups multiple packages under the unified control of a root `yukispace.toml` manifest. This eliminates redundant configurations, simplifies native C library builds, and streamlines dependency management.

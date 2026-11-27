@@ -5,7 +5,7 @@ load core.utils: cast
 load core.panic: panic
 load core.process: exit, args
 load std.io: println
-load std.strings: eq, slice, parse_int
+load std.strings: eq, parse_int
 load .util: str_starts, sjoin, int_str
 load std.env: get_or, set_env
 load std.fs.archives.tar: TarError
@@ -353,7 +353,7 @@ fun run_project(ref argv: string[]) -> bool {
         } elif eq(sub, "renew-all") && (n == 3 || n == 4) {
             set days: int64 = 30
             if n == 4 {
-                rewrite days = parse_int(argv[3]) ?? 30
+                rewrite days = cast(parse_int(argv[3]) ?? 30, "int64")
             }
             cmd_index_renew_all(argv[2], days)
         } else {

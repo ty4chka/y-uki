@@ -1,5 +1,7 @@
 # Module std.platformio
 
+> **English** · [Русский](../../ru/stdlib/4-platformio.md)
+
 The `std.platformio` module provides direct low-level access to the input-output system APIs of specific target operating systems: POSIX (Unix), Linux-specific zero-copy data system calls, and the Win32 API for Windows.
 
 ---

@@ -19,7 +19,7 @@ load .config: state_dir
 load .priv: sync_disk
 load .policy: policy_check, policy_check_link, is_config
 load .verify: link_target_ok
-load .sysdb: PkgRecord, db_has, db_dir, db_read, db_write, db_files, db_remove, owner_of, dependents_of, history_add, f_hash, f_mode, f_kind, f_path
+load .sysdb: PkgRecord, db_has, db_dir, db_write, db_files, db_remove, owner_of, dependents_of, history_add, f_hash, f_mode, f_kind, f_path
 load .util: now_secs, now_ms, str_starts, join2, sjoin, str_lines, str_split, int_str
 
 public struct ApplyItem {
@@ -65,7 +65,7 @@ fun lock_acquire() {
         set pf = join2(ld, "pid")
         set alive = false
         if file_exists(pf) {
-            set pid: int64 = parse_int(trim(file_read_text(pf))) ?? 0
+            set pid: int64 = cast(parse_int(trim(file_read_text(pf))) ?? 0, "int64")
             if pid > 0 && kill(cast(pid, "int32"), 0) == 0 {
                 rewrite alive = true
             }
@@ -100,7 +100,7 @@ fun parse_file_mode(mode: string) -> uint32 {
     if eq(mode, "755") {
         return 493
     }
-    set n: int64 = parse_int(mode) ?? 420
+    set n: int64 = cast(parse_int(mode) ?? 420, "int64")
     if n <= 0 || n > 511 {
         return 420
     }
@@ -112,7 +112,7 @@ fun restore_file(backup: string, dest: string, mode: string) {
     file_copy(backup, tmp)
     set m: uint32 = parse_file_mode(mode)
     chmod(tmp, m)
-    set root: uint32 = 0
+    static root: uint32 = 0
     chown(tmp, root, root)
     file_rename(tmp, dest)
 }
@@ -206,7 +206,7 @@ fun link_target_for(ref items: ApplyItem[], n: int64, rel: string) -> string {
 // Only directories, regular files and policy-safe symlinks; every path and link target passes policy.
 fun scan_package(pkg: string, root: string, ref items: ApplyItem[], n: int64) -> string[] {
     set out: string[] = []
-    set zero: uint32 = 0
+    static zero: uint32 = 0
     set all = dir_walk(root)
     for i in 0..all.len() {
         set rel = apply_strip_root(all[i], root)
@@ -395,8 +395,8 @@ fun commit_item(txid: string, ref items: ApplyItem[], n: int64, overwrite: bool)
     }
     sync_disk()
 
-    set rootu: uint32 = 0
-    set dir_mode: uint32 = 493
+    static rootu: uint32 = 0
+    static dir_mode: uint32 = 493
     for i in 0..fl.len() {
         set rel = f_path(fl[i])
         set dest = "/" + rel

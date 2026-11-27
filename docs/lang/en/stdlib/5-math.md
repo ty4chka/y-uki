@@ -1,5 +1,7 @@
 # Module std.math
 
+> **English** · [Русский](../../ru/stdlib/5-math.md)
+
 The `std.math` module provides a minimal orthogonal basis of low-level mathematical primitives: IEEE 754 bitwise conversions, hardware rounding and square root instructions, processor bit counters, extended-width arithmetic with carry/borrow flags, and fundamental floating-point constants.
 
 ---

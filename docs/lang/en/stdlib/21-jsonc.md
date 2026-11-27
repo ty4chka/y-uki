@@ -1,5 +1,7 @@
 # Module std.jsonc
 
+> **English** · [Русский](../../ru/stdlib/21-jsonc.md)
+
 The `std.jsonc` module provides full-featured tools for parsing, validating, comment stripping, and serializing documents in the JSON with Comments (JSONC) format. The module fully supports single-line `//` comments, multi-line block `/* ... */` comments, and trailing commas in objects and arrays.
 
 ---

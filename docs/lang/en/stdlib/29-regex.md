@@ -1,5 +1,7 @@
 # Module std.regex
 
+> **English** · [Русский](../../ru/stdlib/29-regex.md)
+
 The `std.regex` module provides a high-performance regular expression engine with complete Unicode standard support and guaranteed linear-time matching ($O(mn)$) free from Regular Expression Denial of Service (ReDoS) backtracking vulnerabilities. The module supports pattern compilation, matching flags, offset extraction, numbered and named capture groups (`Captures`), substring replacements with group expansions (`$1`, `${name}`), and regular expression splitting.
 
 ---

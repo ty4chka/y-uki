@@ -1,5 +1,7 @@
 # Module std.line
 
+> **English** · [Русский](../../ru/stdlib/23-line.md)
+
 The `std.line` module provides a declarative, object-oriented command-line argument parser designed in 100% pure Yukino, inspired by the popular `clap` library. The module supports hierarchical commands and subcommands of arbitrary nesting depth, named options, short and long flags, short flag bundles (`-abc`), assignment syntax via equals sign (`--opt=val`), the special terminator `--` for trailing raw arguments, automatic generation of formatted help (`-h`, `--help`) and version (`-v`, `--version`), conflicting arguments (`conflicts_with`), and fuzzy typo suggestions ("Did you mean...") based on Levenshtein distance styled via `std.outf`.
 
 ### Ergonomic CLI as a First-Class Citizen in Yukino

@@ -1,5 +1,7 @@
 # Memory Model, Ownership, and Regions
 
+> **English** · [Русский](../ru/6-memory.md)
+
 Yukino offers a deterministic memory management model: **C- and Rust-level performance without garbage collector (GC) overhead** and **static guarantees against dangling pointers and memory leaks**.
 
 This chapter describes Yukino's memory management architecture: resource lifecycle, the affine type system, the rules of the static borrow verifier (Borrow Checker), and regional bump allocators.

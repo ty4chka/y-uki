@@ -1,5 +1,7 @@
 # Installing Yukino
 
+> **English** · [Русский](../ru/1-setup.md)
+
 This guide covers installing the `yukino` project manager, the `yukic` compiler driver, and building binaries for other platforms.
 
 > [!TIP]

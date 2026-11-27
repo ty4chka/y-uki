@@ -1,5 +1,7 @@
 # Module std.io
 
+> **English** · [Русский](../../ru/stdlib/2-io.md)
+
 The `std.io` module provides standard stream and console input-output functionality: output to stdout and stderr, reading lines and bytes from stdin, thread lock management, interactive terminal detection, cursor control, and raw mode management.
 
 ---

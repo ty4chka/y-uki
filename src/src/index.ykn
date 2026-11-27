@@ -18,9 +18,8 @@
 // The client fetches only the needed record over HTTPS (sparse); cloning the
 // index is not required.
 
-load core.utils: cast
 load core.panic: panic
-load std.json: JsonValue, json_parse, json_stringify
+load std.json: json_parse, json_stringify
 load std.outf: strip_ansi
 load std.strings: eq, trim, slice, parse_int, contains
 load std.fs.files: file_exists, file_read_text, file_write_text, file_rename
@@ -174,24 +173,30 @@ fun entry_url_ok(url: string) -> bool {
 // verified later and are mirror-independent. Panics with YukiError (404) when
 // every mirror fails.
 public fun index_get(rel: string, max_bytes: int64) -> string {
-    set urls = index_urls()
-    set why = ""
-    for i in 0..urls.len() {
-        set got = ""
-        set okk = false
-        sus {
-            rewrite got = http_text(urls[i] + "/" + rel, max_bytes)
-            rewrite okk = true
-        } catch e: YukiError {
-            rewrite why = e.message
-        } catch {
-            rewrite why = errkind
-        }
-        if okk {
-            return got
-        }
+    return index_get_from(index_urls(), rel, max_bytes, 0, "")
+}
+
+// Mirror iteration as recursion so every path returns explicitly: a loop that
+// ends in a tail panic trips the tooling flow analysis. why keeps the last
+// mirror failure for the exhaustion error.
+fun index_get_from(urls: string[], rel: string, max_bytes: int64, i: int64, why: string) -> string {
+    if i >= urls.len() {
+        panic(err("all index mirrors failed: " + why, 404, rel))
     }
-    panic(err("all index mirrors failed: " + why, 404, rel))
+    set got = ""
+    set okk = false
+    sus {
+        rewrite got = http_text(urls[i] + "/" + rel, max_bytes)
+        rewrite okk = true
+    } catch e: YukiError {
+        rewrite why = e.message
+    } catch {
+        rewrite why = errkind
+    }
+    if okk {
+        return got
+    }
+    return index_get_from(urls, rel, max_bytes, i + 1, why)
 }
 
 // Downloads a record and its signature (network only, no verification).
@@ -381,11 +386,9 @@ public fun resolve_text(name: string, want: string, text: string, sig: string, r
     set url = versions.at(best).get("url").as_string_or("")
     set checksum = versions.at(best).get("checksum").as_string_or("")
     if kind == "lib" {
-        if !entry_url_ok(url) {
-            panic(err("release URL is not allowed: " + url, 208, rel_path))
-        }
-        if !checksum_ok_format(checksum) {
-            panic(err("release has a malformed checksum", 209, rel_path))
+        // libraries are source-only: a lib entry carries no prebuilt artifacts
+        if url.len() > 0 || versions.at(best).get("bin").len() > 0 {
+            panic(err("libraries are source-only: prebuilt artifacts are not allowed", 219, rel_path))
         }
     }
 
@@ -409,7 +412,7 @@ public fun resolve_text(name: string, want: string, text: string, sig: string, r
             panic(err("source release has a bad URL or checksum", 219, rel_path))
         }
         set bl = src.get("build")
-        if bl.len() == 0 || bl.len() > 16 {
+        if !eq(kind, "lib") && (bl.len() == 0 || bl.len() > 16) {
             panic(err("source release needs 1-16 build arguments", 220, rel_path))
         }
         for k in 0..bl.len() {
@@ -420,7 +423,7 @@ public fun resolve_text(name: string, want: string, text: string, sig: string, r
             build.push(a)
         }
         set fl = src.get("files")
-        if fl.len() == 0 || fl.len() > 256 {
+        if !eq(kind, "lib") && (fl.len() == 0 || fl.len() > 256) {
             panic(err("source release needs 1-256 packaged files", 221, rel_path))
         }
         for k in 0..fl.len() {
@@ -439,6 +442,15 @@ public fun resolve_text(name: string, want: string, text: string, sig: string, r
             }
             files.push(from + "|" + to + "|" + mode + "|" + fh)
         }
+    }
+
+    if kind == "lib" && src_url.len() == 0 {
+        panic(err("libraries are source-only: a src block is required", 219, rel_path))
+    }
+    if kind == "lib" {
+        // the dependency link of a library is its source archive: built from source in the project
+        rewrite url = src_url
+        rewrite checksum = src_sum
     }
 
     set deps: string[] = []

@@ -1,5 +1,7 @@
 # Module std.numf
 
+> **English** · [Русский](../../ru/stdlib/18-numf.md)
+
 The `std.numf` (number format) module provides utilities for formatting, base conversion, and human-readable representation of numeric values in Yukino. The module includes arbitrary radix conversions (binary, hexadecimal, octal), string parsing with support for prefixes and separators, grouping by thousands, zero-padded left alignment, byte size conversions (IEC and SI), and metric suffixes.
 
 ---

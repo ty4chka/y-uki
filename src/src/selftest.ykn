@@ -6,24 +6,25 @@
 load core.utils: cast
 load core.panic: panic
 load std.env: get_or, set_env
-load std.threads: spawn, join, sleep
+load std.threads: spawn, join
 load std.json: json_parse, json_stringify
-load std.hash: hex_to_bytes, bytes_to_hex, blake3_str
+load std.hash: bytes_to_hex, blake3_str
 load std.hash.blake3: blake3_file
 load std.crypto: ed25519_public_key, ed25519_sign, random_bytes
 load std.fs.archives.tar: tar_list
 load std.os.unix: chmod
-load std.fs.files: file_exists, file_write_text, file_read_text, file_remove
+load std.fs.files: file_exists, file_write_text, file_read_text
 load std.fs.dirs: dir_create_all, dir_remove_all
 load std.fs.defaults: dir_temp
 load std.strings: eq, contains, slice, parse_int
-load .errors: YukiError, err
+load .errors: err
 load .config: host_target
 load std.io: println
 load .ui: ok, bad, info, c_dim
-load .util: str_lower, str_pad_end, valid_name, valid_version, ver_cmp, digits_val, edit_distance, is_hex, now_ms, join2, str_split, int_str
+load .util: str_lower, str_pad_end, valid_name, valid_version, ver_cmp, digits_val, edit_distance, now_ms, join2, str_split, int_str
 load .verify: is_safe_rel_path, link_target_ok, resolve_link_target, checksum_ok_format, verify_text, signed_message
 load .policy: policy_check, policy_check_link
+load .index: seen_get, seen_set, seen_hash
 load .i18n: i18n_table_ok
 load .tarpack: tar_pack_tree
 
@@ -90,7 +91,7 @@ public fun cmd_selftest() {
     check(vc_b == 0, "version comparison: equal versions", ref ~failed)
     check(vc_c < 0, "version comparison: 0.9.9 is older than 1.0.0", ref ~failed)
     check(digits_val("1024") == 1024, "digits_val parses 1024", ref ~failed)
-    set pi_a: int64 = parse_int("42") ?? 0
+    set pi_a: int64 = cast(parse_int("42") ?? 0, "int64")
     check(pi_a == 42, "parse_int(42) with a default gives 42", ref ~failed)
     set pi_b: int64? = parse_int("10")
     check(pi_b != null, "parse_int(10) is not null", ref ~failed)
@@ -116,7 +117,7 @@ public fun cmd_selftest() {
     check(policy_check("x", "usr/bin/yuki").len() > 0 && policy_check("x", "usr/local/bin/yuki").len() > 0 && policy_check("yuki", "usr/bin/yuki").len() == 0 && policy_check("yuki", "usr/local/bin/yuki").len() == 0, "only the yuki package may replace usr/bin/yuki or usr/local/bin/yuki", ref ~failed)
 
     // JSON: re-serialization is stable (content signatures rely on this)
-    set j = "{\"b\":[1,2,{\"c\":\"d\"}],\"a\":true}"
+    static j = "{\"b\":[1,2,{\"c\":\"d\"}],\"a\":true}"
     set once = json_stringify(json_parse(j))
     check(eq(json_stringify(json_parse(once)), once), "json parse and stringify are stable", ref ~failed)
 
@@ -130,6 +131,20 @@ public fun cmd_selftest() {
     file_write_text(f, "yuki")
     check(file_exists(f) && eq(file_read_text(f), "yuki") && eq(blake3_file(f), blake3_str("yuki")), "file write, read and blake3_file agree with blake3_str", ref ~failed)
 
+    // seen file (anti-rollback record): values round-trip, a legacy two-field
+    // record reports no stored hash and is backfilled at equal seq, an empty
+    // hash keeps the record two-field
+    set_env("YUKI_STATE_DIR", dir)
+    seen_set("selftest_seen", 5, "aa")
+    check(seen_get("selftest_seen") == 5 && eq(seen_hash("selftest_seen"), "aa"), "seen_set, seen_get and seen_hash agree", ref ~failed)
+    file_write_text(join2(dir, "seen"), "selftest_seen2 3\n")
+    check(seen_get("selftest_seen2") == 3 && eq(seen_hash("selftest_seen2"), ""), "a legacy two-field seen record has no stored hash", ref ~failed)
+    seen_set("selftest_seen2", 3, "bb")
+    check(seen_get("selftest_seen2") == 3 && eq(seen_hash("selftest_seen2"), "bb"), "a legacy seen record is backfilled at equal seq", ref ~failed)
+    seen_set("selftest_seen", 6, "")
+    check(seen_get("selftest_seen") == 6 && eq(seen_hash("selftest_seen"), ""), "an empty content hash keeps the record two-field", ref ~failed)
+    set_env("YUKI_STATE_DIR", "")
+
     // threads: spawn/join works and the worker sees the environment
     set tf = join2(dir, "thread.txt")
     set_env_local(tf)
@@ -142,7 +157,7 @@ public fun cmd_selftest() {
     dir_create_all(join2(pk, "usr/bin"))
     set pk_bin = join2(pk, "usr/bin/x")
     file_write_text(pk_bin, "#!/bin/sh\n")
-    set pk_mode: uint32 = 493
+    static pk_mode: uint32 = 493
     chmod(pk_bin, pk_mode)
     set pk_arc = join2(dir, "pk.tar.zst")
     tar_pack_tree(pk_arc, pk)

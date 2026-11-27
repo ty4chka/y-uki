@@ -1,5 +1,7 @@
 # Module std.encore
 
+> **English** · [Русский](../../ru/stdlib/33-encore.md)
+
 The `std.encore` module provides a comprehensive suite of tools for low-level and systems Unicode processing: UTF-8 byte sequence validation, extraction and encoding of Unicode scalar values (codepoints), extended grapheme cluster segmentation complying with UAX #29 (including combining accents and zero-width joiner sequences), as well as bidirectional UTF-16 conversions with surrogate pair support for direct Win32 API (`wchar_t*`, `LPCWSTR`) and JVM (`jchar[]`) runtime interoperability.
 
 ---

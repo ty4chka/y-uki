@@ -157,8 +157,8 @@ public fun audit_tar(archive: string, max_entries: int64, max_total: int64, max_
         })
     }
 
-    set setid_bits: uint32 = 3072
-    set zero: uint32 = 0
+    static setid_bits: uint32 = 3072
+    static zero: uint32 = 0
     set total: int64 = 0
 
     for i in 0..entries.len() {

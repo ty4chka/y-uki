@@ -1,5 +1,7 @@
 # Module std.locale
 
+> **English** · [Русский](../../ru/stdlib/17-locale.md)
+
 The `std.locale` module provides cross-platform access to operating system language and regional settings, ISO language and country codes, user preferred language lists, and system timezone name.
 
 ---

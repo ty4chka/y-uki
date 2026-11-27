@@ -4,19 +4,18 @@
 //   yuki profile list | show <name> | add <name> <pkg>... | remove <name> [pkg]... | install <name>
 //   yuki catalog [query]     yuki tags [prefix]     yuki search tag:<name>
 
-load core.utils: cast
 load core.panic: panic
 load std.io: println
-load std.json: JsonValue, json_parse, json_object, json_array, json_string, json_int, json_pretty, json_validate
+load std.json: json_parse, json_object, json_array, json_string, json_int, json_pretty, json_validate
 load std.fs.files: file_exists, file_read_text, file_write_text, file_rename, file_remove
 load std.fs.dirs: dir_create_all, dir_exists, dir_list
 load std.fs.paths: path_file_name
-load std.strings: eq, trim, contains, slice
-load .errors: YukiError, err
+load std.strings: eq, contains, slice
+load .errors: err
 load .config: state_dir
 load .priv: is_root
 load .util: valid_name, now_secs, str_ends, str_starts, join2, str_lower, sjoin, str_pad_end, plural, int_str
-load .ui: ok, info, warn, bad, card, kv, c_accent, c_good, c_warn, c_bad, c_dim
+load .ui: ok, info, warn, card, c_accent, c_good, c_dim
 load .theme: sym
 load .sysdb: db_has
 load .catalog: verified_catalog
@@ -119,6 +118,7 @@ fun catalog_profiles() -> JsonValue {
         rewrite out = doc.get("profiles")
     } catch {
         // catalog unavailable -> no curated profiles
+        space
     }
     return out
 }
@@ -191,6 +191,7 @@ public fun cmd_profile_add(name: string, ref pkgs: string[]) {
         }
     } catch {
         // catalog unavailable -> add without the check
+        space
     }
     set n_all = all.len()
     save_profile(name, ref all)

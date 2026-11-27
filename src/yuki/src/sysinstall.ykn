@@ -7,7 +7,6 @@
 //   4. root copies the artifacts over, re-checks blake3, audit and path policy, unpacks into its own dir
 //   5. root applies the transaction with journal and rollback
 
-load core.utils: cast
 load core.panic: panic
 load std.io: print, println, read_line
 load std.env: get_or, set_env
@@ -18,15 +17,15 @@ load std.os.unix: chmod
 load std.fs.archives.tar: tar_unpack, tar_list, TarError
 load std.hash.blake3: blake3_file
 load std.process: run
-load std.strings: eq, trim, parse_int, contains, slice
+load std.strings: eq, trim, parse_int, slice
 load .errors: YukiError, err
 load .config: state_dir, host_target, MAX_ENTRIES, MAX_TOTAL, MAX_FILE
 load .view: InstallView
-load .ui: ok, info, warn, bad, step, kv, card, done, c_accent, c_good, c_warn, c_bad, c_dim, c_bold
+load .ui: ok, info, warn, bad, step, kv, done, c_accent, c_good, c_warn, c_bad, c_dim, c_bold
 load .theme: sym, animation_on
 load .priv: is_root
 load .stage: stage_create, stage_remove, run_child, write_roots
-load .sysplan: PNode, plan_nodes, spec_name, spec_ver
+load .sysplan: plan_nodes, spec_name, spec_ver
 load .sysbuild: build_policy
 load .pipeline: archive_ext
 load .scan: scan_dir, print_report
@@ -34,7 +33,7 @@ load .publisher: pub_doc, pub_name_in, pub_index, pub_has_key, pub_display_in, p
 load .policy: policy_check, policy_check_link
 load .verify: VerifyError, check_blake3, audit_tar
 load .apply: ApplyItem, apply_transaction, remove_package, rollback_locked, check_package
-load .sysdb: PkgRecord, is_held, is_explicit, mark_explicit, orphans, dependents_of, db_names, db_read, db_has, db_files, owner_of, f_kind, f_path, history_add
+load .sysdb: is_held, is_explicit, mark_explicit, orphans, dependents_of, db_names, db_read, db_has, db_files, owner_of, f_kind, f_path
 load .util: now_ms, valid_name, valid_version, dep_name, str_starts, str_ends, join2, sjoin, str_lines, str_lower, str_pad_end, str_split, int_str
 
 fun sys_need_root() {
@@ -237,7 +236,7 @@ fun collect(stage: string, ref nodes: PNode[], ref items: ApplyItem[]) -> int64 
         tar_unpack(copy, root_dir)
 
         // Restore full file permissions from the verified archive metadata
-        set zero: uint32 = 0
+        static zero: uint32 = 0
         for e in 0..ents.len() {
             set rel = norm_tar_path(ents[e].path)
             if rel.len() == 0 || ents[e].link_target.len() > 0 {
@@ -711,19 +710,17 @@ public fun cmd_sys_rollback(txid: string) {
     if target.len() == 0 {
         set base = join2(state_dir(), "tx")
         set best: int64 = 0
-        if true {
-            sus {
-                set all = dir_list(base)
-                for i in 0..all.len() {
-                    set id = path_file_name(all[i])
-                    set n: int64 = parse_int(id) ?? 0
-                    if n > best && file_exists(join2(all[i], "COMMITTED")) && !file_exists(join2(all[i], "ROLLED_BACK")) {
-                        rewrite best = n
-                    }
+        sus {
+            set all = dir_list(base)
+            for i in 0..all.len() {
+                set id = path_file_name(all[i])
+                set n: int64 = parse_int(id) ?? 0
+                if n > best && file_exists(join2(all[i], "COMMITTED")) && !file_exists(join2(all[i], "ROLLED_BACK")) {
+                    rewrite best = n
                 }
-            } catch {
-                rewrite best = 0
             }
+        } catch {
+            rewrite best = 0
         }
         if best == 0 {
             panic(err("no transaction to roll back", 731, ""))

@@ -1,5 +1,7 @@
 # Strings and Bytes
 
+> **English** · [Русский](../ru/8-strings.md)
+
 In Yukino, strings are a fundamental built-in type. The compiler provides a rich set of string operations directly in the language core, without the need to connect external modules.
 
 ## Contents

@@ -1,5 +1,7 @@
 # Structures, Classes, and Interfaces
 
+> **English** · [Русский](../ru/7-oop.md)
+
 Yukino provides two models of object data types: **structures (`struct`)** for high-performance value types without overhead, and **classes (`class`)** for polymorphic object-oriented programming with virtual tables (`vtable`).
 
 ## Contents

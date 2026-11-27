@@ -8,7 +8,7 @@ load std.outf: style, visible_len
 load std.strings: parse_int, slice
 load .theme: paint, sym, grad
 load .explain: has_explain
-load .util: sjoin, str_repeat, str_split, int_str, fmt_bytes, fmt_speed
+load .util: sjoin, str_repeat, str_split, int_str, fmt_bytes
 
 public fun c_accent(text: string) -> string {
     return paint("accent", text)
@@ -95,7 +95,7 @@ public fun done(took_ms: int64, hint: string) {
 //
 public fun diag_error(code: string, title: string, location: string, help: string) {
     eprintln("  " + c_bad("error[" + code + "]") + ": " + c_bold(title))
-    set num: int64 = parse_int(slice(code, 1, code.len())) ?? 0
+    set num: int64 = cast(parse_int(slice(code, 1, code.len())) ?? 0, "int64")
     set tails: string[] = []
     if help.len() > 0 {
         tails.push(c_good("help") + ": " + sjoin(str_split(help, "\n"), "\n         "))

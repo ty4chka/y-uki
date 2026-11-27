@@ -1,5 +1,7 @@
 # Module std.json
 
+> **English** · [Русский](../../ru/stdlib/20-json.md)
+
 The `std.json` module provides high-performance tools for parsing, safe data extraction, validation, and serialization of documents strictly conforming to the RFC 8259 JSON specification in pure Yukino without external dependencies.
 
 ---

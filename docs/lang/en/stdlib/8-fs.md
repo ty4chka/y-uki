@@ -1,5 +1,7 @@
 # Module std.fs
 
+> **English** · [Русский](../../ru/stdlib/8-fs.md)
+
 The `std.fs` module provides a comprehensive suite of cross-platform functions, classes, and structures for file system interaction: path manipulation, directory creation and removal, recursive traversal, file reading and writing, metadata queries, streaming I/O via `class File`, and resolving standard user and system paths (XDG, Windows environment variables, Temp). Archive handling (zip, tar) is separated into the `std.fs.archives` submodule and documented in [16-archives.md](16-archives.md).
 
 ---

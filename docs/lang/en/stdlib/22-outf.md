@@ -1,5 +1,7 @@
 # Module std.outf
 
+> **English** · [Русский](../../ru/stdlib/22-outf.md)
+
 The `std.outf` (output format) module provides tools for console output styling, terminal color control (8 standard colors, 8 bright colors, 256-color palette, and 24-bit TrueColor RGB), text modifiers (bold, dim, italic, underline, blink, reversed, hidden, strikethrough), and automatic terminal capability detection adhering to standard environment variables (`NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `COLORTERM`, `TERM`). Inspired by modern terminal styling libraries (such as `owo-colors` and `colored`), `std.outf` takes string arguments by value (`text: string`) as lightweight Copy descriptors, and exposes a fluent chainable API through the `Styled` class.
 
 ---

@@ -1,5 +1,7 @@
 # 16. Testing and Test Runner
 
+> **English** · [Русский](../ru/16-tests.md)
+
 Yukino provides a first-class built-in unit and integration testing system. The compiler and runtime include an integrated test runner featuring parallel test execution, process isolation for workers, watchdog timeouts to guard against infinite loops, flexible test filtering, and clean, colorful terminal reporting.
 
 ---

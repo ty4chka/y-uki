@@ -21,8 +21,7 @@ load .config: MAX_DOWNLOAD
 load .fetch: download
 load .pipeline: fetch_verified
 load .verify: VerifyError, check_blake3
-load .view: InstallView
-load .util: now_ms, join2, str_split, int_str, fmt_bytes, fmt_speed
+load .util: now_ms, join2, str_split, int_str, fmt_speed
 
 fun p_job(dir: string, i: int64) -> string {
     return join2(dir, "job-" + int_str(i))
@@ -81,7 +80,7 @@ fun pool_worker(arg: ptr<void>) {
 }
 
 public fun jobs_limit() -> int64 {
-    set env: int64 = parse_int(get_or("YUKI_JOBS", "")) ?? 0
+    set env: int64 = cast(parse_int(get_or("YUKI_JOBS", "")) ?? 0, "int64")
     if env >= 1 && env <= 16 {
         return env
     }
@@ -221,7 +220,7 @@ public fun pool_bytes(dir: string, i: int64) -> int64 {
     if parts.len() < 2 {
         return 0
     }
-    return parse_int(parts[1]) ?? 0
+    return cast(parse_int(parts[1]) ?? 0, "int64")
 }
 
 // If any task failed, raise the first error (after all of them finish).

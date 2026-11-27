@@ -1,5 +1,7 @@
 # Editor Extensions and Yukino LSP
 
+> **English** · [Русский](../ru/extensions.md)
+
 This document describes the installation and configuration of official and community editor extensions, extension configuration options, and the command-line interface for the `yukino-lsp` language server.
 
 ---
