@@ -36,7 +36,7 @@ jobs:
         run: printf '\n[workspace]\n' >> yukino-lsp/Cargo.toml
       - name: Build Yukino LSP
         working-directory: yukino-lsp
-        run: cargo build --locked --release --bin yukino-lsp
+        run: cargo build --release --bin yukino-lsp
       - name: Verify binaries and shared libraries
         run: |
           mkdir -p dist
