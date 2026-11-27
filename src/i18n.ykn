@@ -4,7 +4,7 @@
 // Numeric arguments are passed as strings only: the caller must call int_str().
 
 load std.strings: eq, replace
-load std.env: get_or, set_env, has_env
+load std.env: get_or, set_env
 load .util: str_lower, str_starts, int_str
 
 static I18N_KEYS: string[] = [
@@ -14,6 +14,10 @@ static I18N_KEYS: string[] = [
     "help.section.trust",
     "help.section.maintainers",
     "help.section.help",
+    "help.section.system.title",
+    "help.section.look.title",
+    "help.section.project.title",
+    "help.section.help.title",
     "help.h.install",
     "help.h.repair_remove",
     "help.h.move_newer",
@@ -116,6 +120,10 @@ static I18N_EN: string[] = [
     "trust and look",
     "maintainers",
     "(yuki help <command>, yuki explain <code>)",
+    "system",
+    "look around",
+    "project",
+    "help",
     "binary for your platform, or build from source",
     "repair or remove (-Rs also removes unneeded deps)",
     "move to newer signed releases",
@@ -199,7 +207,7 @@ static I18N_EN: string[] = [
     "yuki was not installed by yuki: run `sudo yuki install yuki` once",
     "no such command: {0}",
     "no such command: {0}. Did you mean `{1}`?",
-    "shell must be bash, zsh or fish",
+    "shell must be bash, zsh or fish (got: {0})",
     "no explanation for \"{0}\"",
     "wrong arguments for `{0}`",
     "usage: {0}\nmore: yuki help {1}",
@@ -218,6 +226,10 @@ static I18N_RU: string[] = [
     "доверие и обзор",
     "сопровождающие",
     "(yuki help <команда>, yuki explain <код>)",
+    "система",
+    "обзор",
+    "проект",
+    "справка",
     "бинарник для вашей платформы или сборка из исходников",
     "починить или удалить (-Rs также удаляет ненужные зависимости)",
     "перейти на более новые подписанные выпуски",
@@ -301,7 +313,7 @@ static I18N_RU: string[] = [
     "yuki был установлен не через yuki: один раз выполните `sudo yuki install yuki`",
     "нет такой команды: {0}",
     "нет такой команды: {0}. Возможно, вы имели в виду `{1}`?",
-    "shell должен быть bash, zsh или fish",
+    "shell должен быть bash, zsh или fish (получен: {0})",
     "нет объяснения для \"{0}\"",
     "неверные аргументы для `{0}`",
     "использование: {0}\nподробнее: yuki help {1}",
@@ -375,38 +387,39 @@ fun lang_from_locale(v: string) -> string {
     return ""
 }
 
-fun lang_normalize(v: string) -> string {
-    return lang_from_locale(v)
-}
-
-// Precedence: YUKI_LANG_CACHE -> YUKI_LANG -> LANG -> LC_ALL -> "en".
+// Precedence: YUKI_LANG -> LC_ALL -> LC_MESSAGES -> LANG -> "en".
 public fun lang() -> string {
-    if has_env("YUKI_LANG_CACHE") {
-        set c = lang_normalize(get_or("YUKI_LANG_CACHE", ""))
-        if c.len() > 0 {
-            return c
-        }
-    }
-    set a = lang_normalize(get_or("YUKI_LANG", ""))
+    set a = lang_from_locale(get_or("YUKI_LANG", ""))
     if a.len() > 0 {
         return a
     }
-    set b = lang_normalize(get_or("LANG", ""))
+    set b = lang_from_locale(get_or("LC_ALL", ""))
     if b.len() > 0 {
         return b
     }
-    set d = lang_normalize(get_or("LC_ALL", ""))
+    set c = lang_from_locale(get_or("LC_MESSAGES", ""))
+    if c.len() > 0 {
+        return c
+    }
+    set d = lang_from_locale(get_or("LANG", ""))
     if d.len() > 0 {
         return d
     }
     return "en"
 }
 
-// An empty or invalid value enables auto-detection, never crashes.
+// Sets an explicit UI language: a valid value overrides auto-detection through
+// YUKI_LANG; an empty or invalid value leaves auto-detection in place. Never
+// panics.
 public fun i18n_init(v: string) {
-    set n = lang_normalize(v)
-    if n.len() == 0 {
-        rewrite n = lang()
+    set n = lang_from_locale(v)
+    if n.len() > 0 {
+        set_env("YUKI_LANG", n)
     }
-    set_env("YUKI_LANG_CACHE", n)
+}
+
+// True when the key, EN and RU tables are parallel (equal lengths). A mismatch
+// would make t() read past the end of the shorter table.
+public fun i18n_table_ok() -> bool {
+    return I18N_KEYS.len() == I18N_EN.len() && I18N_EN.len() == I18N_RU.len()
 }

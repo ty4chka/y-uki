@@ -1,13 +1,12 @@
-// resolver.ykn — разрешение дерева зависимостей.
-// Версии в индексе закреплены точно ("имя@1.2.3"), поэтому результат
-// детерминирован: SAT-решатель не нужен, только обход и проверка конфликтов.
+// resolver.ykn — dependency tree resolution.
+// Index versions are pinned exactly ("name@1.2.3"), so the result is
+// deterministic: no SAT solver is needed, only traversal and conflict checks.
 
 load core.panic: panic
 load std.strings: eq
-load .errors: YukiError, err
-load .index: Release, resolve
+load .errors: err
+load .index: resolve
 load .util: dep_name, dep_version
-load .view: InstallView
 
 public struct Node {
     name: string
@@ -55,7 +54,7 @@ fun resolve_visit(name: string, want: string, parent: int64, depth: int32, ref ~
     }
 }
 
-// Корень первым, дальше в порядке обхода в глубину. Дерево растёт на панели по мере находок.
+// Root first, then depth-first order. The tree grows on the panel as nodes are found.
 public fun resolve_tree(name: string, want: string, ref ~view: InstallView) -> Node[] {
     set out: Node[] = []
     resolve_visit(name, want, -1, 0, ref ~out, ref ~view)

@@ -1,4 +1,4 @@
-// cmdlist.ykn — список команд: подсказка «did you mean», дополнение в оболочке, справка.
+// cmdlist.ykn — command list: did-you-mean suggestion, shell completion, help.
 
 load std.strings: eq
 load .util: edit_distance, str_starts, sjoin
@@ -7,7 +7,7 @@ public fun all_commands() -> string[] {
     return ["install", "reinstall", "uninstall", "upgrade", "self-update", "list", "info", "files", "owns", "why", "tree", "check", "sys-audit", "outdated", "hold", "unhold", "history", "rollback", "export", "import", "search", "show", "catalog", "tags", "profile", "publisher", "add", "remove", "fetch", "update", "audit", "keys", "theme", "pack", "publish", "yank", "renew", "index", "verify", "verify-sig", "inspect", "doctor", "config", "clean", "explain", "selftest", "completions", "help", "version"]
 }
 
-// Самая похожая команда или "" (если ничего близкого нет).
+// The closest command, or "" when nothing is close enough.
 public fun suggest(cmd: string) -> string {
     set all = all_commands()
     set best = ""
@@ -39,7 +39,7 @@ public fun completion_script(shell: string) -> string {
     return ""
 }
 
-// Подробная справка: [usage, описание, пример, ...]
+// Detailed help: [usage, description, example, ...]
 public fun help_lines(cmd: string) -> string[] {
     if eq(cmd, "install") { return ["yuki install <pkg>[@ver]  (sudo)", "Installs an application: a prebuilt binary for your platform, or builds it from source in a sandbox if you agree.", "sudo yuki install ripgrep", "sudo yuki install ripgrep@14.1.0 --yes", "flags: --yes (skip the plan prompt), --allow-build (accept source builds), --overwrite"] }
     if eq(cmd, "scan") { return ["yuki scan <dir>", "Heuristic review of an unpacked package tree: what looks bad and why (reverse shells, miners, persistence, obfuscated payloads).", "yuki scan ./unpacked/ripgrep"] }

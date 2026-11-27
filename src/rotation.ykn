@@ -1,16 +1,16 @@
-// rotation.ykn — ротация и отзыв ключей реестра.
+// rotation.ykn — registry key rotation and revocation.
 //
 // <index>/keys/rotation.json  { "seq": 7, "expires": 1798761600,
 //                               "add": [{"name": "main2", "key": "<64 hex>"}],
 //                               "revoke": ["<64 hex>"] }
-// <index>/keys/rotation.sigs  строки "<pubkey hex> <signature hex>"
+// <index>/keys/rotation.sigs  lines "<pubkey hex> <signature hex>"
 //
-// Применяется, только если её подписали не меньше threshold РАЗНЫХ ключей с ролью "publisher",
-// которым клиент уже доверяет. Ключ "renewer" ротировать ключи не может.
+// Applied only when at least threshold DIFFERENT trusted keys with the
+// "publisher" role signed it. A "renewer" key cannot rotate keys.
 
-load core.utils: cast
 load core.panic: panic
 load std.json: json_parse
+load std.hash: blake3_str
 load std.fs.files: file_read_text
 load std.strings: trim, eq
 load .errors: YukiError, err
@@ -18,7 +18,7 @@ load .stage: stage_create, run_child, stage_remove
 load .view: InstallView
 load .trust: trusted_keys, trusted_roles, threshold, revoke_key, trust_add, fingerprint
 load .verify: verify_text
-load .index: seen_get, seen_set
+load .index: seen_get, seen_set, seen_hash
 load .util: now_secs, is_hex, valid_name, join2, str_lines, str_lower, str_split, int_str
 load .priv: is_root
 load .ui: ok, info, warn, step, c_accent, c_dim
@@ -41,6 +41,9 @@ fun is_trusted_publisher(ref keys: string[], ref roles: string[], pubkey_hex: st
     return false
 }
 
+// Fetches the signed key rotation file (unprivileged), verifies the publisher
+// threshold and applies the added and revoked keys as root. Panics with
+// YukiError (750/760/761/762/763) on any violation or failure.
 public fun cmd_keys_refresh() {
     if !is_root() {
         panic(err("changing trusted keys needs root: run `sudo yuki keys refresh`", 750, ""))
@@ -79,10 +82,19 @@ public fun cmd_keys_refresh() {
         if doc.get("expires").as_int() < now_secs() {
             panic(err("rotation file has expired", 761, "rotation.json"))
         }
-        // Равный seq — тоже реплей уже применённой ротации: принимаем только
-        // строго возрастающие seq (анти-rollback, P0).
-        if seq <= seen_get("__rotation__") {
+        // Anti-rollback, seq vs the recorded state:
+        //   seq < seen  -> panic
+        //   seq == seen -> accept if the stored hash matches, else panic; a
+        //                  record without a hash is accepted and backfilled
+        //   seq > seen  -> accept and record
+        set content_hash = blake3_str(text)
+        set prev = seen_get("__rotation__")
+        set stored_hash = seen_hash("__rotation__")
+        if seq < prev {
             panic(err("rotation file is older than one already applied", 762, "rotation.json"))
+        }
+        if seq == prev && stored_hash.len() > 0 && !eq(content_hash, stored_hash) {
+            panic(err("rotation file changed at the same seq (rollback attack?)", 762, "rotation.json"))
         }
 
         step(3, 3, "applying")
@@ -107,7 +119,7 @@ public fun cmd_keys_refresh() {
                 warn("revoked key " + c_dim(fingerprint(key)))
             }
         }
-        seen_set("__rotation__", seq)
+        seen_set("__rotation__", seq, content_hash)
     } catch e: YukiError {
         stage_remove(stage)
         panic(e)

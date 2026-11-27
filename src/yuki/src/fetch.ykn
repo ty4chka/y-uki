@@ -1,0 +1,461 @@
+// fetch.ykn — HTTPS downloads without external dependencies. Policy: https
+// only, allow-listed hosts, no port or userinfo, at most 5 redirects, hard size
+// limit. Integrity comes from BLAKE3/signatures, not from the transport.
+
+load core.utils: cast
+load core.panic: panic
+load std.net: tcp_connect, tls_connect, TlsError
+load std.strings: trim, slice, contains, eq, parse_int
+load std.fs.files: file_open_write, file_remove, file_write_text
+load .errors: YukiError, err
+load .config: host_allowed
+load .util: now_ms, str_starts, str_index, str_lower, str_split, int_str
+
+// HTTP response: status, redirect location, body (for text fetches) and the
+// number of received bytes.
+public struct Response {
+    status: int32
+    location: string
+    body: string
+    received: int64
+}
+
+struct Target {
+    host: string
+    path: string
+}
+
+// Body source: plain or chunked. raw holds the bytes not yet parsed.
+struct BodyReader {
+    chunked: bool
+    raw: string
+    remaining: int64
+    state: int32
+}
+
+// States of the chunked transfer decoder (BodyReader.state).
+static CHUNK_STATE_SIZE: int32 = 0   // reading the chunk-size line
+static CHUNK_STATE_DATA: int32 = 1   // reading chunk data
+static CHUNK_STATE_CRLF: int32 = 2   // reading the CRLF that ends chunk data
+static CHUNK_STATE_DONE: int32 = 3   // terminal zero-length chunk seen
+
+fun parse_target(url: string) -> Target {
+    if !str_starts(url, "https://") {
+        panic(err("only https:// URLs are allowed", 401, url))
+    }
+    if contains(url, " ") || contains(url, "\r") || contains(url, "\n") || contains(url, "\\") || contains(url, "\"") || contains(url, "|") || contains(url, "\t") {
+        panic(err("URL contains forbidden characters", 402, url))
+    }
+    set rest = slice(url, 8, url.len())
+    set slash = str_index(rest, "/")
+    set authority = rest
+    set path = "/"
+    if slash >= 0 {
+        rewrite authority = slice(rest, 0, slash)
+        rewrite path = slice(rest, slash, rest.len())
+    }
+    set hash = str_index(path, "#")
+    if hash >= 0 {
+        rewrite path = slice(path, 0, hash)
+    }
+    if authority.len() == 0 || contains(authority, "@") || contains(authority, ":") {
+        panic(err("URL must be https://host/path (no userinfo, no port)", 402, url))
+    }
+    set host = str_lower(authority)
+    if !host_allowed(host) {
+        panic(err("host is not on the allow-list: " + host, 403, url))
+    }
+    return Target { host: host, path: path }
+}
+
+// Checks a URL without touching the network. Panics with YukiError (401-403)
+// when the URL violates the policy.
+public fun check_url(url: string) {
+    set _t = parse_target(url)
+}
+
+fun header_value(ref hl: string[], name: string) -> string {
+    for i in 1..hl.len() {
+        set colon = str_index(hl[i], ":")
+        if colon > 0 {
+            if eq(str_lower(trim(slice(hl[i], 0, colon))), name) {
+                return trim(slice(hl[i], colon + 1, hl[i].len()))
+            }
+        }
+    }
+    return ""
+}
+
+// Missing close_notify surfaces as a TlsError mentioning "close_notify" or
+// "unexpected end"; TlsError has no dedicated end-of-stream code.
+fun tls_unexpected_eof(e: TlsError) -> bool {
+    set m = str_lower(e.message)
+    return contains(m, "close_notify") || contains(m, "unexpected end")
+}
+
+// Reads decrypted bytes into buf and returns the byte count, 0 on clean EOF.
+// For an EOF-delimited body (eof_ok) a missing TLS close_notify is accepted as
+// the end of the body; every other transport error is re-thrown (P0).
+fun tls_read(ref ~tls: TlsStream, buf: ptr<uint8>, max_len: int64, eof_ok: bool) -> int64 {
+    set n: int64 = 0
+    sus {
+        rewrite n = tls.read_bytes(buf, max_len)
+    } catch e: TlsError {
+        if eof_ok && tls_unexpected_eof(e) {
+            return 0
+        }
+        panic(e)
+    }
+    return n
+}
+
+// Byte-wise TLS read without UTF-8 validation (avoids NetError InvalidData
+// on .tar.zst). "" = stream end: clean EOF, or missing close_notify at the
+// end of an EOF-delimited body (eof_ok); other transport errors propagate.
+fun read_chunk(ref ~tls: TlsStream, eof_ok: bool) -> string {
+    set buf: uint8[65536]
+    set n = tls_read(ref ~tls, buf.as_ptr(), 65536, eof_ok)
+    if n == 0 {
+        return ""
+    }
+    set out: bytes = []
+    out.reserve(n)
+    for i in 0..n {
+        out.push(buf[i])
+    }
+    return cast(out, "string")
+}
+
+fun hexval(ch: string) -> int64 {
+    return str_index("0123456789abcdef", str_lower(ch))
+}
+
+fun parse_hex(s: string) -> int64 {
+    set n: int64 = 0
+    if s.len() == 0 || s.len() > 12 {
+        return -1
+    }
+    for i in 0..s.len() {
+        set v: int64 = hexval(slice(s, i, i + 1))
+        if v < 0 {
+            return -1
+        }
+        rewrite n = n * 16 + v
+    }
+    return n
+}
+
+// Next piece of the body; "" means the body ended. eof_ok applies only to the
+// plain (non-chunked) reader; chunked framing must complete with its terminal
+// zero chunk or the caller reports a truncated download (P0).
+fun next_piece(ref ~tls: TlsStream, ref ~r: BodyReader, eof_ok: bool) -> string {
+    if !r.chunked {
+        if r.raw.len() > 0 {
+            set p = r.raw
+            rewrite r.raw = ""
+            return p
+        }
+        return read_chunk(ref ~tls, eof_ok)
+    }
+    loop {
+        if r.state == CHUNK_STATE_DONE {
+            return ""
+        }
+        if r.state == CHUNK_STATE_SIZE {
+            set eol = str_index(r.raw, "\r\n")
+            if eol < 0 {
+                set more = read_chunk(ref ~tls, false)
+                if more.len() == 0 {
+                    return ""
+                }
+                rewrite r.raw = r.raw + more
+                continue
+            }
+            set line = slice(r.raw, 0, eol)
+            set semi = str_index(line, ";")
+            if semi >= 0 {
+                rewrite line = slice(line, 0, semi)
+            }
+            set size = parse_hex(trim(line))
+            if size < 0 {
+                panic(err("malformed chunk size", 406, ""))
+            }
+            rewrite r.raw = slice(r.raw, eol + 2, r.raw.len())
+            if size == 0 {
+                rewrite r.state = CHUNK_STATE_DONE
+                return ""
+            }
+            rewrite r.remaining = size
+            rewrite r.state = CHUNK_STATE_DATA
+        } elif r.state == CHUNK_STATE_DATA {
+            if r.raw.len() == 0 {
+                set more = read_chunk(ref ~tls, false)
+                if more.len() == 0 {
+                    return ""
+                }
+                rewrite r.raw = more
+            }
+            set take = r.remaining
+            if r.raw.len() < take {
+                rewrite take = r.raw.len()
+            }
+            set piece = slice(r.raw, 0, take)
+            rewrite r.raw = slice(r.raw, take, r.raw.len())
+            rewrite r.remaining = r.remaining - take
+            if r.remaining == 0 {
+                rewrite r.state = CHUNK_STATE_CRLF
+            }
+            return piece
+        } else {
+            // CHUNK_STATE_CRLF: the two bytes that end the chunk data.
+            if r.raw.len() < 2 {
+                set more = read_chunk(ref ~tls, false)
+                if more.len() == 0 {
+                    return ""
+                }
+                rewrite r.raw = r.raw + more
+                continue
+            }
+            rewrite r.raw = slice(r.raw, 2, r.raw.len())
+            rewrite r.state = CHUNK_STATE_SIZE
+        }
+    }
+    return ""
+}
+
+fun write_progress(prog_path: string, received: int64, total: int64, last: int64, t_start: int64) -> int64 {
+    if prog_path.len() == 0 {
+        return last
+    }
+    set now = now_ms()
+    if now - last < 100 {
+        return last
+    }
+    sus {
+        file_write_text(prog_path, int_str(received) + " " + int_str(total))
+    } catch {
+        set _ign = 0
+    }
+    return now
+}
+
+fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -> Response {
+    set t = parse_target(url)
+    set tcp = tcp_connect(t.host + ":443", 15000)
+    tcp.set_timeouts(30000, 30000)
+    set tls = tls_connect(ref tcp, t.host, false)
+    defer { tcp.close() }
+    defer { tls.close() }
+
+    tls.write("GET " + t.path + " HTTP/1.0\r\nHost: " + t.host + "\r\nUser-Agent: yuki/0.1\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n")
+    tls.flush()
+
+    set head = ""
+    set body_start = ""
+    set found = false
+    while !found {
+        set chunk = read_chunk(ref ~tls, false)
+        if chunk.len() == 0 {
+            break
+        }
+        rewrite head = head + chunk
+        if head.len() > 65536 {
+            panic(err("response headers are too large", 406, url))
+        }
+        set idx = str_index(head, "\r\n\r\n")
+        if idx >= 0 {
+            rewrite body_start = slice(head, idx + 4, head.len())
+            rewrite head = slice(head, 0, idx)
+            rewrite found = true
+        }
+    }
+    if !found {
+        panic(err("connection closed before response headers", 406, url))
+    }
+
+    set hl = str_split(head, "\r\n")
+    set sl = str_split(hl[0], " ")
+    if sl.len() < 2 {
+        panic(err("malformed HTTP status line", 406, url))
+    }
+    set status: int32 = cast(parse_int(sl[1]) ?? 0, "int32")
+    set location = header_value(ref hl, "location")
+    if status != 200 {
+        return Response { status: status, location: location, body: "", received: 0 }
+    }
+
+    set chunked = contains(str_lower(header_value(ref hl, "transfer-encoding")), "chunked")
+    set clen: int64 = cast(parse_int(header_value(ref hl, "content-length")) ?? -1, "int64")
+    if chunked {
+        rewrite clen = -1
+    }
+    if clen > max_bytes {
+        panic(err("response is larger than the allowed limit", 407, url))
+    }
+    // An EOF-delimited body (no Content-Length, not chunked) ends at the stream
+    // end; only for that framing may a missing close_notify pass as clean EOF.
+    set eof_delimited = !chunked && clen < 0
+
+    set rd = BodyReader { chunked: chunked, raw: body_start, remaining: 0, state: CHUNK_STATE_SIZE }
+    set received: int64 = 0
+    set last: int64 = 0
+    set t_start = now_ms()
+
+    if dest.len() == 0 {
+        set body = ""
+        loop {
+            set piece = next_piece(ref ~tls, ref ~rd, eof_delimited)
+            if piece.len() == 0 {
+                break
+            }
+            rewrite received += piece.len()
+            if received > max_bytes {
+                panic(err("response is larger than the allowed limit", 407, url))
+            }
+            rewrite body = body + piece
+            if clen >= 0 && received >= clen {
+                break
+            }
+        }
+        // A truncated body must not look like success: a short Content-Length
+        // body or a chunked stream without its terminal zero chunk fails (P0).
+        if clen >= 0 && received < clen || chunked && rd.state != CHUNK_STATE_DONE {
+            panic(err("download was cut short", 408, url))
+        }
+        return Response { status: status, location: "", body: body, received: received }
+    }
+
+    set f = file_open_write(dest)
+    defer { f.close() }
+    if !chunked {
+        if body_start.len() > 0 {
+            rewrite received += body_start.len()
+            if received > max_bytes {
+                panic(err("download is larger than the allowed limit", 407, url))
+            }
+            f.write(body_start.as_ptr(), body_start.len())
+            rewrite last = write_progress(prog_path, received, clen, last, t_start)
+        }
+        set dl_buf: uint8[65536]
+        loop {
+            if clen >= 0 && received >= clen {
+                break
+            }
+            set n = tls_read(ref ~tls, dl_buf.as_ptr(), 65536, eof_delimited)
+            if n == 0 {
+                break
+            }
+            rewrite received += n
+            if received > max_bytes {
+                panic(err("download is larger than the allowed limit", 407, url))
+            }
+            f.write(dl_buf.as_ptr(), n)
+            region {
+                rewrite last = write_progress(prog_path, received, clen, last, t_start)
+            }
+        }
+    } else {
+        loop {
+            set done_chunk = false
+            region {
+                set piece = next_piece(ref ~tls, ref ~rd, false)
+                if piece.len() == 0 {
+                    rewrite done_chunk = true
+                } else {
+                    rewrite received += piece.len()
+                    if received > max_bytes {
+                        panic(err("download is larger than the allowed limit", 407, url))
+                    }
+                    f.write(piece.as_ptr(), piece.len())
+                    rewrite last = write_progress(prog_path, received, clen, last, t_start)
+                    if clen >= 0 && received >= clen {
+                        rewrite done_chunk = true
+                    }
+                }
+            }
+            if done_chunk {
+                break
+            }
+        }
+    }
+    // A chunked stream cut short before its terminal zero chunk is not a
+    // success (P0).
+    if chunked && rd.state != CHUNK_STATE_DONE {
+        panic(err("download was cut short", 408, url))
+    }
+    if prog_path.len() > 0 {
+        sus {
+            file_write_text(prog_path, int_str(received) + " " + int_str(received))
+        } catch {
+            set _ign = 0
+        }
+    }
+    if clen >= 0 && received < clen {
+        panic(err("download was cut short", 408, url))
+    }
+    return Response { status: status, location: "", body: "", received: received }
+}
+
+fun absolute_location(current: string, loc: string) -> string {
+    if str_starts(loc, "https://") {
+        return loc
+    }
+    if str_starts(loc, "/") {
+        set t = parse_target(current)
+        return "https://" + t.host + loc
+    }
+    panic(err("redirect to an unsupported location", 405, current))
+}
+
+fun get_follow(url: string, dest: string, max_bytes: int64, prog_path: string) -> Response {
+    return get_follow_hops(url, url, dest, max_bytes, prog_path, 0)
+}
+
+// Redirect following as recursion with an explicit hop bound: a loop that ends
+// in a tail panic trips the tooling flow analysis, which reports a missing
+// return there. The first argument stays the original url for the exhaustion
+// error, the second is the current redirect target.
+fun get_follow_hops(url: string, cur: string, dest: string, max_bytes: int64, prog_path: string, hop: int64) -> Response {
+    if hop >= 6 {
+        panic(err("too many redirects", 405, url))
+    }
+    set r = fetch_once(cur, dest, max_bytes, prog_path)
+    if r.status == 301 || r.status == 302 || r.status == 303 || r.status == 307 || r.status == 308 {
+        if r.location.len() == 0 {
+            panic(err("redirect without Location header", 405, cur))
+        }
+        return get_follow_hops(url, absolute_location(cur, r.location), dest, max_bytes, prog_path, hop + 1)
+    }
+    return r
+}
+
+// Fetches a small text resource (index record, signature) and returns the body.
+// Panics with YukiError (404-408) on any failure.
+public fun http_text(url: string, max_bytes: int64) -> string {
+    set r = get_follow(url, "", max_bytes, "")
+    if r.status != 200 {
+        panic(err("HTTP " + int_str(cast(r.status, "int64")) + " for " + url, 404, url))
+    }
+    return r.body
+}
+
+// Downloads an archive into a file. prog_path ("" disables progress) receives
+// "received total" updates. Returns the number of received bytes. Panics with
+// YukiError (404-408) on any failure and removes the partial file.
+public fun download(url: string, dest: string, max_bytes: int64, prog_path: string) -> int64 {
+    set r = Response { status: 0, location: "", body: "", received: 0 }
+    sus {
+        rewrite r = get_follow(url, dest, max_bytes, prog_path)
+    } catch e: YukiError {
+        file_remove(dest)
+        panic(e)
+    } catch {
+        file_remove(dest)
+        panic(err("download failed: " + errkind, 409, url))
+    }
+    if r.status != 200 {
+        file_remove(dest)
+        panic(err("HTTP " + int_str(cast(r.status, "int64")) + " for " + url, 404, url))
+    }
+    return r.received
+}

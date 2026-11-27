@@ -1,0 +1,13 @@
+// errors.ykn — the shared yuki error.
+// Code ranges: 1xx config, 2xx index, 3xx verification (VerifyError + 300),
+// 4xx network, 5xx manifest, 6xx keys.
+
+public struct YukiError {
+    message: string
+    code: int32
+    path: string
+}
+
+public fun err(message: string, code: int32, path: string) -> YukiError {
+    return YukiError { message: message, code: code, path: path }
+}

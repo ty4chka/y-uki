@@ -1,0 +1,297 @@
+// selftest.ykn — `yuki selftest`: checks the built binary against known values.
+// Run it right after the first build: hashes, signatures, threads, path policy,
+// JSON, files. No network is needed and nothing outside the temp directory is
+// touched.
+
+load core.utils: cast
+load core.panic: panic
+load std.env: get_or, set_env
+load std.threads: spawn, join
+load std.json: json_parse, json_stringify, json_object, json_array, json_string, json_int
+load std.hash: bytes_to_hex, blake3_str
+load std.hash.blake3: blake3_file
+load std.crypto: ed25519_public_key, ed25519_sign, random_bytes
+load std.fs.archives.tar: tar_list
+load std.os.unix: chmod
+load std.fs.files: file_exists, file_write_text, file_read_text, file_metadata
+load std.fs.dirs: dir_create_all, dir_remove_all
+load std.fs.defaults: dir_temp
+load std.strings: eq, contains, slice, parse_int
+load .errors: err
+load .config: host_target
+load std.io: println
+load .ui: ok, bad, info, c_dim
+load .util: str_lower, str_pad_end, valid_name, valid_version, ver_cmp, digits_val, edit_distance, now_ms, join2, str_split, int_str
+load .verify: is_safe_rel_path, link_target_ok, resolve_link_target, checksum_ok_format, verify_text, signed_message
+load .policy: policy_check, policy_check_link
+load .index: seen_get, seen_set, seen_hash, resolve_text
+load .trust: keygen, trust_add, sign_text
+load .apply: rollback_tx
+load .tarpack: tar_pack_tree, build_script_of
+
+fun println_header() {
+    info("running self-tests")
+}
+
+fun slice_from(s: string, from: int64) -> string {
+    return slice(s, from, s.len())
+}
+
+fun set_env_local(path: string) {
+    set_env("YUKI_SELFTEST_FILE", path)
+}
+
+// A minimal valid signed index entry (lib, source only) for the anti-rollback
+// checks: the same shape write_entry produces for a source-only library.
+fun st_entry_text(name: string, seq: int64, ver: string, keyname: string, pk: string) -> string {
+    set src = json_object()
+    src.set("url", json_string("https://example.test/a.tar"))
+    src.set("checksum", json_string("blake3:" + blake3_str("src")))
+    set bl = json_array([])
+    bl.push(json_string("true"))
+    src.set("build", bl)
+    set v = json_object()
+    v.set("version", json_string(ver))
+    v.set("src", src)
+    v.set("deps", json_array([]))
+    set versions = json_array([])
+    versions.push(v)
+    set cs = json_object()
+    cs.set("key", json_string(pk))
+    cs.set("sig", json_string(sign_text(keyname, "content\n" + json_stringify(versions.cp()))))
+    set sigs = json_array([])
+    sigs.push(cs)
+    set root = json_object()
+    root.set("name", json_string(name))
+    root.set("kind", json_string("lib"))
+    root.set("seq", json_int(seq))
+    root.set("expires", json_int(2000000000))
+    root.set("versions", versions.cp())
+    root.set("content_sigs", sigs)
+    return json_stringify(root)
+}
+
+fun check(cond: bool, label: string, ref ~failed: int64) {
+    if cond {
+        ok(label)
+    } else {
+        bad(label)
+        rewrite failed += 1
+    }
+}
+
+#[thunk]
+fun selftest_thread(arg: ptr<void>) {
+    set path = get_or("YUKI_SELFTEST_FILE", "")
+    sus {
+        file_write_text(path, "thread-" + int_str(cast(arg, "int64")))
+    } catch {
+        set _ign = 0
+    }
+}
+
+public fun cmd_selftest() {
+    set failed: int64 = 0
+    println_header()
+
+    // hashes: the known BLAKE3 value of the empty string
+    check(eq(blake3_str(""), "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"), "blake3 of the empty string matches the reference", ref ~failed)
+
+    // signatures: a full round and tampering, with the domain separator
+    set seed: bytes = random_bytes(32)
+    set pubk: bytes = ed25519_public_key(ref seed)
+    set pub_hex = bytes_to_hex(ref pubk)
+    set msg: bytes = cast(signed_message("hello"), "bytes")
+    set sig: bytes = ed25519_sign(ref seed, ref msg)
+    set sig_hex = bytes_to_hex(ref sig)
+    check(pub_hex.len() == 64 && sig_hex.len() == 128, "ed25519 key and signature sizes (32 and 64 bytes)", ref ~failed)
+    check(verify_text(pub_hex, "hello", sig_hex), "a fresh signature verifies", ref ~failed)
+    check(!verify_text(pub_hex, "hellp", sig_hex), "a changed message is rejected", ref ~failed)
+    check(!verify_text(pub_hex, "hello", "00" + slice_from(sig_hex, 2)), "a damaged signature is rejected", ref ~failed)
+    set other: bytes = random_bytes(32)
+    set other_pub: bytes = ed25519_public_key(ref other)
+    check(!verify_text(bytes_to_hex(ref other_pub), "hello", sig_hex), "a different key is rejected", ref ~failed)
+
+    // names, versions, edit distances
+    check(valid_name("ripgrep") && valid_name("a-b_c1") && !valid_name("-x") && !valid_name("Up") && !valid_name("a b") && !valid_name(""), "package name rules", ref ~failed)
+    check(valid_version("1.2.3") && !valid_version("1.2") && !valid_version("1.2.x") && !valid_version("01.2.3."), "version rules", ref ~failed)
+    set vc_a: int64 = ver_cmp("1.10.0", "1.9.9")
+    set vc_b: int64 = ver_cmp("1.2.3", "1.2.3")
+    set vc_c: int64 = ver_cmp("0.9.9", "1.0.0")
+    check(vc_a > 0, "version comparison: 1.10.0 is newer than 1.9.9", ref ~failed)
+    check(vc_b == 0, "version comparison: equal versions", ref ~failed)
+    check(vc_c < 0, "version comparison: 0.9.9 is older than 1.0.0", ref ~failed)
+    check(digits_val("1024") == 1024, "digits_val parses 1024", ref ~failed)
+    set pi_a: int64 = cast(parse_int("42") ?? 0, "int64")
+    check(pi_a == 42, "parse_int(42) with a default gives 42", ref ~failed)
+    set pi_b: int64? = parse_int("10")
+    check(pi_b != null, "parse_int(10) is not null", ref ~failed)
+    set pi_c: int64? = parse_int("x1")
+    check(pi_c == null, "parse_int(x1) is null", ref ~failed)
+    set sp: string[] = str_split("1.10.0", ".")
+    check(sp.len() == 3 && eq(sp[1], "10"), "split 1.10.0 gives 3 parts", ref ~failed)
+    set sp_a: string[] = str_split("1.10.0", ".")
+    set sp_b: string[] = str_split("1.9.9", ".")
+    check(eq(sp_a[1], "10") && eq(sp_b[1], "9"), "two split results stay independent", ref ~failed)
+    check(!eq(str_lower("ABC"), str_lower("XYZ")) && eq(str_lower("ABC"), str_lower("abc")), "two lower results stay independent", ref ~failed)
+    check(eq(str_pad_end("a", 3) + "|" + str_pad_end("b", 3), "a  |b  "), "two pad_end results stay independent", ref ~failed)
+    check(edit_distance("instal", "install") == 1 && edit_distance("abc", "abc") == 0, "edit distance", ref ~failed)
+    check(checksum_ok_format("blake3:" + blake3_str("x")) && !checksum_ok_format("blake3:xyz") && !checksum_ok_format("sha256:" + blake3_str("x")), "checksum format", ref ~failed)
+
+    // paths, symlinks and allowed symlink targets (V-01, V-03)
+    check(is_safe_rel_path("usr/bin/rg") && !is_safe_rel_path("../x") && !is_safe_rel_path("/etc/x") && !is_safe_rel_path("a/../../b") && !is_safe_rel_path("a\\b"), "safe relative paths", ref ~failed)
+    check(link_target_ok("usr/bin/foo", "../lib/foo") && !link_target_ok("usr/bin/foo", "/etc/passwd") && !link_target_ok("usr/bin/foo", "../../../etc/passwd"), "symlink targets stay inside the package tree", ref ~failed)
+    check(eq(resolve_link_target("usr/local/bin/hook", "../../../etc/sudoers"), "etc/sudoers"), "resolve_link_target canonicalizes relative symlink target", ref ~failed)
+    check(policy_check_link("x", "usr/bin/foo", "../lib/libfoo.so").len() == 0 && policy_check_link("x", "usr/local/bin/hook", "../../../etc/sudoers").len() > 0, "policy_check_link blocks symlinks targeting protected paths", ref ~failed)
+    check(policy_check("x", "usr/bin/x").len() == 0, "policy allows usr/bin/x", ref ~failed)
+    check(policy_check("x", "etc/sudoers.d/x").len() > 0 && policy_check("x", "etc/systemd/system/x.service").len() > 0 && policy_check("x", "etc/polkit-1/rules.d/x").len() > 0 && policy_check("x", "boot/vmlinuz").len() > 0 && policy_check("x", "etc/yuki/trusted_keys").len() > 0, "policy refuses protected paths (sudoers, systemd, polkit, boot, yuki)", ref ~failed)
+    check(policy_check("x", "usr/bin/yuki").len() > 0 && policy_check("x", "usr/local/bin/yuki").len() > 0 && policy_check("yuki", "usr/bin/yuki").len() == 0 && policy_check("yuki", "usr/local/bin/yuki").len() == 0, "only the yuki package may replace usr/bin/yuki or usr/local/bin/yuki", ref ~failed)
+
+    // JSON: re-serialization is stable (content signatures rely on this)
+    static j = "{\"b\":[1,2,{\"c\":\"d\"}],\"a\":true}"
+    set once = json_stringify(json_parse(j))
+    check(eq(json_stringify(json_parse(once)), once), "json parse and stringify are stable", ref ~failed)
+
+    // files and file hashing
+    set dir = join2(dir_temp(), "yuki-selftest-" + int_str(now_ms()))
+    dir_create_all(dir)
+    set f = join2(dir, "a.txt")
+    file_write_text(f, "yuki")
+    check(file_exists(f) && eq(file_read_text(f), "yuki") && eq(blake3_file(f), blake3_str("yuki")), "file write, read and blake3_file agree with blake3_str", ref ~failed)
+
+    // seen file (anti-rollback record): values round-trip, a legacy two-field
+    // record reports no stored hash and is backfilled at equal seq, an empty
+    // hash keeps the record two-field
+    set_env("YUKI_STATE_DIR", dir)
+    seen_set("selftest_seen", 5, "aa")
+    check(seen_get("selftest_seen") == 5 && eq(seen_hash("selftest_seen"), "aa"), "seen_set, seen_get and seen_hash agree", ref ~failed)
+    file_write_text(join2(dir, "seen"), "selftest_seen2 3\n")
+    check(seen_get("selftest_seen2") == 3 && eq(seen_hash("selftest_seen2"), ""), "a legacy two-field seen record has no stored hash", ref ~failed)
+    seen_set("selftest_seen2", 3, "bb")
+    check(seen_get("selftest_seen2") == 3 && eq(seen_hash("selftest_seen2"), "bb"), "a legacy seen record is backfilled at equal seq", ref ~failed)
+    seen_set("selftest_seen", 6, "")
+    check(seen_get("selftest_seen") == 6 && eq(seen_hash("selftest_seen"), ""), "an empty content hash keeps the record two-field", ref ~failed)
+    set_env("YUKI_STATE_DIR", "")
+
+    // threads: spawn/join works and the worker sees the environment
+    set tf = join2(dir, "thread.txt")
+    set_env_local(tf)
+    set h = spawn(cast(selftest_thread, "ptr<void>"), cast(7, "ptr<void>"))
+    join(h)
+    check(file_exists(tf) && eq(file_read_text(tf), "thread-7"), "a worker thread starts, runs and joins", ref ~failed)
+
+    // packer: nested directories, relative names, the executable bit
+    set pk = join2(dir, "pk")
+    dir_create_all(join2(pk, "usr/bin"))
+    set pk_bin = join2(pk, "usr/bin/x")
+    file_write_text(pk_bin, "#!/bin/sh\n")
+    static pk_mode: uint32 = 493
+    chmod(pk_bin, pk_mode)
+    set pk_arc = join2(dir, "pk.tar.zst")
+    tar_pack_tree(pk_arc, pk)
+    set pk_ents = tar_list(pk_arc)
+    set pk_file: bool = false
+    set pk_dirs: int64 = 0
+    for pi in 0..pk_ents.len() {
+        if eq(pk_ents[pi].path, "usr/bin/x") && pk_ents[pi].is_file && pk_ents[pi].size == 10 && cast(pk_ents[pi].mode, "int64") % 512 == 493 {
+            rewrite pk_file = true
+        }
+        if pk_ents[pi].is_dir {
+            rewrite pk_dirs += 1
+        }
+    }
+    check(pk_file && pk_dirs == 2 && pk_ents.len() == 3, "pack: relative names, directories and the executable bit", ref ~failed)
+
+    // path policy: "./" and "//" are canonicalized before the checks, control
+    // characters are refused (they would corrupt the line-based records)
+    check(policy_check("x", "etc/./passwd").len() > 0 && policy_check("x", "etc//passwd").len() > 0 && policy_check("x", "usr/bin/./sudo").len() > 0, "policy canonicalizes ./ and // before the protected-path checks", ref ~failed)
+    check(policy_check("x", "usr/bin/./rg").len() == 0, "policy still allows ordinary paths after canonicalizing", ref ~failed)
+    check(!is_safe_rel_path("a\nb") && !is_safe_rel_path("a\rb") && !is_safe_rel_path("a\tb"), "control characters are refused in relative paths", ref ~failed)
+    check(policy_check_link("x", "usr/lib/x", "a\nb").len() > 0, "policy_check_link refuses control characters in a symlink target", ref ~failed)
+
+    // build.ykn detection: at the archive root and inside a single wrapper folder
+    set bs = join2(dir, "bsrc")
+    dir_create_all(bs)
+    file_write_text(join2(bs, "build.ykn"), "echo one")
+    file_write_text(join2(bs, "main.ykn"), "x")
+    set ba = join2(dir, "bsrc.tar")
+    tar_pack_tree(ba, bs)
+    check(eq(build_script_of(ba), "echo one"), "build_script_of finds build.ykn at the archive root", ref ~failed)
+    set bw = join2(dir, "bwrap")
+    dir_create_all(join2(bw, "repo-1.0"))
+    file_write_text(join2(join2(bw, "repo-1.0"), "build.ykn"), "echo two")
+    set bwa = join2(dir, "bwrap.tar")
+    tar_pack_tree(bwa, bw)
+    check(eq(build_script_of(bwa), "echo two"), "build_script_of finds build.ykn in a wrapper folder", ref ~failed)
+    set bn = join2(dir, "bnone")
+    dir_create_all(bn)
+    file_write_text(join2(bn, "main.ykn"), "x")
+    set bna = join2(dir, "bnone.tar")
+    tar_pack_tree(bna, bn)
+    check(eq(build_script_of(bna), ""), "build_script_of reports no script when absent", ref ~failed)
+
+    // journal rollback: a backup path with spaces and a symlink target with
+    // spaces are restored, not skipped by the line parser
+    set_env("YUKI_STATE_DIR", dir)
+    static txid = "selftest-tx"
+    set txd = join2(join2(dir, "tx"), txid)
+    dir_create_all(txd)
+    set bakp = join2(txd, "bak file.txt")
+    file_write_text(bakp, "old")
+    set dst = join2(dir, "dst.txt")
+    set dst2 = join2(dir, "dst2.txt")
+    set dst3 = join2(dir, "dst3.txt")
+    file_write_text(dst, "new")
+    file_write_text(dst3, "temp")
+    file_write_text(join2(txd, "journal"), "new " + dst3 + "\nbak " + dst + " " + bakp + " 644\noldlink " + dst2 + " my target with spaces\n")
+    rollback_tx(txid)
+    check(eq(file_read_text(dst), "old"), "rollback restores a backup whose path contains spaces", ref ~failed)
+    check(file_metadata(dst2).is_symlink, "rollback recreates a symlink whose target contains spaces", ref ~failed)
+    check(!file_exists(dst3), "rollback removes a newly created file", ref ~failed)
+    set_env("YUKI_STATE_DIR", "")
+
+    // resolve_text (lib, source only) anti-rollback: an equal seq with
+    // different content is refused, an older seq is refused, a legacy
+    // two-field record is accepted and backfilled with the content hash
+    set cdir = join2(dir, "cfg")
+    dir_create_all(cdir)
+    set_env("YUKI_CONFIG_DIR", cdir)
+    set_env("YUKI_STATE_DIR", dir)
+    file_write_text(join2(cdir, "allowed_hosts"), "example.test")
+    set pk = keygen("st-key")
+    trust_add("st-key", pk, "publisher", true)
+    set ta = st_entry_text("st-pkg", 5, "1.0.0", "st-key", pk)
+    set ra = resolve_text("st-pkg", "", ta, sign_text("st-key", ta), true)
+    check(eq(ra.url, "https://example.test/a.tar") && eq(ra.checksum, "blake3:" + blake3_str("src")), "resolve_text resolves a source-only lib entry", ref ~failed)
+    set tb = st_entry_text("st-pkg", 5, "1.0.1", "st-key", pk)
+    set refused = false
+    sus {
+        resolve_text("st-pkg", "", tb, sign_text("st-key", tb), true)
+    } catch {
+        rewrite refused = true
+    }
+    check(refused, "resolve_text refuses different content at the same seq", ref ~failed)
+    set tc = st_entry_text("st-pkg", 4, "0.9.0", "st-key", pk)
+    set refused2 = false
+    sus {
+        resolve_text("st-pkg", "", tc, sign_text("st-key", tc), true)
+    } catch {
+        rewrite refused2 = true
+    }
+    check(refused2, "resolve_text refuses an older seq", ref ~failed)
+    file_write_text(join2(dir, "seen"), "st-pkg 5\n")
+    set rd = resolve_text("st-pkg", "", tb, sign_text("st-key", tb), true)
+    check(eq(rd.version, "1.0.1") && seen_hash("st-pkg").len() > 0, "resolve_text accepts and backfills a legacy record at equal seq", ref ~failed)
+    set_env("YUKI_CONFIG_DIR", "")
+    set_env("YUKI_STATE_DIR", "")
+
+    dir_remove_all(dir)
+
+    check(contains(host_target(), "-"), "platform name looks like os-cpu: " + host_target(), ref ~failed)
+
+    println("")
+    if failed > 0 {
+        panic(err(int_str(failed) + " self-test check(s) failed", 799, "selftest"))
+    }
+    ok("all checks passed " + c_dim("(this build can hash, sign, verify and run threads)"))
+}

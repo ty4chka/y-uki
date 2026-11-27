@@ -1,6 +1,6 @@
-// errors.ykn — общая ошибка yuki.
-// Диапазоны кодов: 1xx конфиг, 2xx индекс, 3xx проверка (VerifyError + 300),
-// 4xx сеть, 5xx manifest, 6xx ключи.
+// errors.ykn — the shared yuki error.
+// Code ranges: 1xx config, 2xx index, 3xx verification (VerifyError + 300),
+// 4xx network, 5xx manifest, 6xx keys.
 
 public struct YukiError {
     message: string

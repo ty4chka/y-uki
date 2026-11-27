@@ -1,19 +1,21 @@
-// tarpack.ykn — упаковщик tar(.zst/.gz) для `yuki pack` и сборки из исходников.
-//
-// Здесь: относительные имена, записи каталогов, настоящий режим файла (только rwx),
-// потоковое копирование, без setuid/setgid, mtime = 0 (воспроизводимый хеш),
-// гарантированное закрытие дескрипторов через defer.
+// tarpack.ykn — tar(.zst/.gz) packer for `yuki pack` and source builds.
+// Constraints: relative names, directory entries, real file mode (rwx only),
+// streaming copies, no setuid/setgid, mtime = 0 (reproducible hash),
+// guaranteed descriptor closing via defer.
 
 load core.utils: cast
 load core.panic: panic
-load std.fs.files: File, file_open_read, file_open_write, file_metadata, file_remove
-load std.fs.dirs: dir_exists, dir_walk
+load std.fs.files: file_open_read, file_open_write, file_metadata, file_exists, file_read_text, file_remove
+load std.fs.dirs: dir_exists, dir_walk, dir_create_all, dir_remove_all
+load std.fs.defaults: dir_temp
+load std.fs.archives.tar: tar_list, tar_unpack
 load std.compress: compress_file
-load std.strings: slice
-load .errors: YukiError, err
-load .util: str_starts, str_ends
+load std.strings: slice, eq
+load .errors: err
+load .util: str_starts, str_ends, str_index, str_last_index, join2, int_str, now_ms
+load .verify: is_safe_rel_path
 
-// Восьмеричное число ровно из digits цифр (старшие нули слева).
+// Octal number exactly `digits` wide (zero-padded).
 fun oct_str(val: int64, digits: int64) -> string {
     set res = ""
     set v: int64 = val
@@ -25,7 +27,7 @@ fun oct_str(val: int64, digits: int64) -> string {
     return res
 }
 
-// Один заголовок ustar (512 байт).
+// One ustar header (512 bytes).
 fun tar_header(ref out: File, name: string, size: int64, mode: int64, is_dir: bool) {
     set hdr: uint8[512]
     set nb: bytes = cast(name, "bytes")
@@ -132,7 +134,7 @@ fun pack_raw_tar(raw: string, root: string) {
     out.write(zeros.as_ptr(), 1024)
 }
 
-// Упаковать каталог root в archive. Расширение решает сжатие: .tar.zst, .tar.gz/.tgz или без сжатия.
+// Packs directory root into archive. The extension picks compression: .tar.zst, .tar.gz/.tgz or none.
 public fun tar_pack_tree(archive: string, root_in: string) {
     set root: string = root_in
     while root.len() > 1 && str_ends(root, "/") {
@@ -155,4 +157,58 @@ public fun tar_pack_tree(archive: string, root_in: string) {
         compress_file(raw, archive, "gz")
         file_remove(raw)
     }
+}
+
+// Text of one regular file of the archive, or "" when it is missing. The
+// archive is unpacked into a scratch directory (callers audit it first), the
+// file is read back and the scratch is removed.
+fun tar_file_text(archive: string, rel: string) -> string {
+    set scratch = join2(dir_temp(), "yuki-inspect-" + int_str(now_ms()))
+    dir_create_all(scratch)
+    tar_unpack(archive, scratch)
+    set out = ""
+    set p = join2(scratch, rel)
+    if file_exists(p) {
+        set md = file_metadata(p)
+        if md.is_file && !md.is_symlink {
+            if md.size <= 65536 {
+                rewrite out = file_read_text(p)
+            } else {
+                rewrite out = "(build.ykn is " + int_str(md.size) + " bytes: review it in the archive yourself)"
+            }
+        }
+    }
+    dir_remove_all(scratch)
+    return out
+}
+
+// The build script a source archive carries, or "" when it has none: either at
+// the archive root or inside a single wrapper folder (the GitHub archive
+// convention that source_root unwraps before building).
+public fun build_script_of(archive: string) -> string {
+    set ents = tar_list(archive)
+    set top = ""
+    set wrapped = ""
+    for i in 0..ents.len() {
+        set p = ents[i].path
+        if str_starts(p, "./") {
+            rewrite p = slice(p, 2, p.len())
+        }
+        if !is_safe_rel_path(p) {
+            continue
+        }
+        if eq(p, "build.ykn") {
+            rewrite top = p
+        }
+        if str_ends(p, "/build.ykn") && str_index(p, "/") == str_last_index(p, "/") {
+            rewrite wrapped = p
+        }
+    }
+    if top.len() > 0 {
+        return tar_file_text(archive, top)
+    }
+    if wrapped.len() > 0 {
+        return tar_file_text(archive, wrapped)
+    }
+    return ""
 }

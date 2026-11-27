@@ -1,8 +1,7 @@
-// sysdb.ykn — база установленных пакетов (как /var/lib/pacman/local).
-//
-//   <state>/db/<имя>/desc    key=value: name version checksum signer origin deps installed_at
-//   <state>/db/<имя>/files   "<blake3> <mode> <f|d|l> <путь>" по строке на объект пакета
-//   <state>/history          журнал транзакций (только дописывается)
+// sysdb.ykn — installed package database (like /var/lib/pacman/local).
+//   <state>/db/<name>/desc    key=value: name version checksum signer origin deps installed_at
+//   <state>/db/<name>/files   "<blake3> <mode> <f|d|l> <path>" one line per package object
+//   <state>/history          transaction journal (append-only)
 
 load core.utils: cast
 load core.panic: panic
@@ -11,7 +10,7 @@ load std.fs.dirs: dir_create_all, dir_exists, dir_list, dir_remove_all
 load std.fs.paths: path_file_name
 load std.strings: trim, eq, slice, parse_int
 load .util: str_index, join2, sjoin, str_lines, str_split, int_str
-load .errors: YukiError, err
+load .errors: err
 load .config: state_dir, resolve_config_file
 
 public struct PkgRecord {
@@ -73,13 +72,13 @@ public fun db_read(name: string) -> PkgRecord {
         signer: kv_get(ls, "signer"),
         origin: kv_get(ls, "origin"),
         deps: kv_get(ls, "deps"),
-        installed_at: parse_int(kv_get(ls, "installed_at")) ?? 0,
+        installed_at: cast(parse_int(kv_get(ls, "installed_at")) ?? 0, "int64"),
         reason: kv_get(ls, "reason"),
         summary: kv_get(ls, "summary"),
     }
 }
 
-// files — строки "<hash> <mode> <kind> <path>"
+// files — lines "<hash> <mode> <kind> <path>"
 public fun db_write(rec: PkgRecord, ref files: string[]) {
     dir_create_all(db_dir(rec.name))
     set d = [
@@ -116,7 +115,6 @@ public fun db_remove(name: string) {
     dir_remove_all(db_dir(name))
 }
 
-// разбор строки files
 public fun f_hash(line: string) -> string {
     return str_split(line, " ")[0] + ""
 }
@@ -134,7 +132,7 @@ public fun f_path(line: string) -> string {
     return p[3]
 }
 
-// Кто владеет файлом ("" — никто). Использует region для сброса временных строк пакета.
+// Which package owns the file ("" = none). Uses region to release temporary package strings.
 public fun owner_of(rel: string) -> string {
     set names = db_names()
     set found_owner = ""
@@ -154,7 +152,7 @@ public fun owner_of(rel: string) -> string {
     return ""
 }
 
-// Кто из установленных пакетов зависит от name.
+// Which installed packages depend on name.
 public fun dependents_of(name: string) -> string[] {
     set out: string[] = []
     set names = db_names()
@@ -181,7 +179,7 @@ public fun history_add(line: string) {
     file_append_text(join2(state_dir(), "history"), line + "\n")
 }
 
-// Пакеты, которые upgrade не трогает (<config>/hold, по имени в строке).
+// Packages that upgrade will not touch (<config>/hold, one name per line).
 public fun held_names() -> string[] {
     set out: string[] = []
     set f = resolve_config_file("hold")
@@ -206,7 +204,7 @@ public fun is_held(name: string) -> bool {
     return false
 }
 
-// Пакет, который поставили как зависимость, а потом попросили явно, становится явным.
+// A package installed as a dependency and later requested explicitly becomes explicit.
 public fun mark_explicit(name: string) {
     set r = db_read(name)
     if !eq(r.reason, "explicit") {
@@ -231,7 +229,7 @@ public fun is_explicit(name: string) -> bool {
     return !eq(r.reason, "dep")
 }
 
-// Зависимости, у которых больше нет зависимых: кандидаты на autoremove.
+// Dependencies with no dependents left: autoremove candidates.
 public fun orphans() -> string[] {
     set out: string[] = []
     set names = db_names()

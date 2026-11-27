@@ -1,0 +1,100 @@
+// policy.ykn — what a package may place in the system at all.
+// Rules apply to the already verified archive, on the root side.
+
+load std.strings: contains, eq
+load .util: str_starts, str_ends, sjoin, str_split
+load .verify: is_safe_rel_path, resolve_link_target
+
+fun starts_any(p: string, prefixes: string[]) -> bool {
+    for i in 0..prefixes.len() {
+        if str_starts(p, prefixes[i]) {
+            return true
+        }
+    }
+    return false
+}
+
+// Canonical form used for every policy decision: empty and "." components
+// carry no meaning on disk, so "etc//passwd" and "etc/./passwd" must not be
+// able to slip past a prefix check that the canonical path would fail.
+fun norm_rel(p: string) -> string {
+    set parts = str_split(p, "/")
+    set keep: string[] = []
+    for i in 0..parts.len() {
+        if parts[i].len() > 0 && !eq(parts[i], ".") {
+            keep.push(parts[i])
+        }
+    }
+    return sjoin(keep, "/")
+}
+
+// Empty string = the path is allowed, otherwise the rejection reason.
+public fun policy_check(pkg: string, rel: string) -> string {
+    if !is_safe_rel_path(rel) {
+        return "unsafe path"
+    }
+    set rel = norm_rel(rel)
+    if rel.len() == 0 {
+        return "unsafe path"
+    }
+    if contains(rel, " ") || contains(rel, "\t") || contains(rel, "\n") || contains(rel, "\r") || contains(rel, "|") {
+        return "whitespace or | in a path"
+    }
+    if str_ends(rel, ".yuki-tmp") || str_ends(rel, ".yuki-new") || str_ends(rel, ".yuki-save") {
+        return "reserved file suffix"
+    }
+    static allowed = ["usr/", "opt/", "etc/"]
+    if !starts_any(rel + "/", allowed) {
+        return "outside of usr/, opt/ and etc/"
+    }
+
+    // paths a package must never touch
+    static never = [
+        "etc/yuki", "usr/lib/yuki", "usr/share/yuki", "var/lib/yuki",
+        "etc/sudoers", "etc/pam.d", "etc/pam.conf", "etc/security",
+        "etc/passwd", "etc/shadow", "etc/group", "etc/gshadow", "etc/subuid", "etc/subgid",
+        "etc/ssh/", "etc/ld.so", "etc/cron", "etc/fstab", "etc/crypttab", "etc/doas.conf",
+        "etc/ssl/", "etc/ca-certificates", "usr/share/ca-certificates", "usr/local/share/ca-certificates",
+        "usr/lib/modules", "usr/lib/firmware", "usr/bin/sudo", "usr/bin/su", "usr/bin/doas", "usr/bin/pkexec",
+        "etc/systemd", "usr/lib/systemd", "lib/systemd", "etc/init.d", "etc/rc",
+        "etc/profile", "etc/bash", "etc/zsh", "etc/environment",
+        "etc/polkit-1", "usr/share/polkit-1", "etc/udev", "usr/lib/udev",
+        "etc/modprobe.d", "etc/modules", "etc/dbus-1"
+    ]
+    if starts_any(rel, never) {
+        return "path is protected"
+    }
+
+    // only the yuki package may replace yuki's own binary
+    static yuki_bins = ["usr/bin/yuki", "usr/local/bin/yuki", "usr/sbin/yuki", "usr/local/sbin/yuki"]
+    if starts_any(rel, yuki_bins) && !eq(pkg, "yuki") {
+        return "only the yuki package may replace yuki"
+    }
+    return ""
+}
+
+// Checks both the symlink path and its resolved target with the policy_check rules.
+public fun policy_check_link(pkg: string, link_rel: string, target: string) -> string {
+    // Control characters in a target would corrupt line-based records too.
+    if contains(target, "\n") || contains(target, "\r") || contains(target, "\t") {
+        return "unsafe symlink target"
+    }
+    set w1 = policy_check(pkg, link_rel)
+    if w1.len() > 0 {
+        return w1
+    }
+    set resolved = resolve_link_target(norm_rel(link_rel), target)
+    if resolved.len() == 0 {
+        return "unsafe symlink target"
+    }
+    set w2 = policy_check(pkg, resolved)
+    if w2.len() > 0 {
+        return "symlink target " + w2 + " (" + resolved + ")"
+    }
+    return ""
+}
+
+// Files under etc/ are configuration: user-modified ones are not overwritten.
+public fun is_config(rel: string) -> bool {
+    return str_starts(rel, "etc/")
+}

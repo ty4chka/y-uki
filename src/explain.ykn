@@ -1,7 +1,7 @@
-// explain.ykn — подсказки к ошибкам.
-//   hint_line(code)   одна строка help, которая печатается под ошибкой
-//   explain_lines(code) подробный разбор для `yuki explain Y0301`
-// Каждая ошибка отвечает на три вопроса: что случилось, почему, что делать.
+// explain.ykn — error hints.
+//   hint_line(code)     one help line printed under the error
+//   explain_lines(code) detailed breakdown for `yuki explain Y0301`
+// Every error answers three questions: what happened, why, what to do.
 
 fun mk(title: string, why: string, fix: string) -> string[] {
     return [title, why, fix]
@@ -90,7 +90,7 @@ public fun has_explain(code: int64) -> bool {
     return explain_lines(code).len() > 0
 }
 
-// Одна строка под ошибкой: «что делать».
+// One line under the error: what to do.
 public fun hint_line(code: int64) -> string {
     set l = explain_lines(code)
     if l.len() == 0 {

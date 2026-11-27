@@ -1,23 +1,21 @@
-// profiles.ykn — профили и живой каталог: именованные наборы пакетов,
-// просмотр каталога и его теги. Свои профили лежат в <state>/profiles/*.json,
-// каталог может предлагать и «кураторские» ( profiles.json в репозитории индекса ).
-//
+// profiles.ykn — profiles and the live catalog: named package sets,
+// catalog browsing and its tags. Own profiles live in <state>/profiles/*.json,
+// the catalog can also offer "curated" ones (profiles.json in the index repository).
 //   yuki profile list | show <name> | add <name> <pkg>... | remove <name> [pkg]... | install <name>
 //   yuki catalog [query]     yuki tags [prefix]     yuki search tag:<name>
 
-load core.utils: cast
 load core.panic: panic
 load std.io: println
-load std.json: JsonValue, json_parse, json_object, json_array, json_string, json_int, json_pretty, json_validate
+load std.json: json_parse, json_object, json_array, json_string, json_int, json_pretty, json_validate
 load std.fs.files: file_exists, file_read_text, file_write_text, file_rename, file_remove
 load std.fs.dirs: dir_create_all, dir_exists, dir_list
 load std.fs.paths: path_file_name
-load std.strings: eq, trim, contains, slice
-load .errors: YukiError, err
+load std.strings: eq, contains, slice
+load .errors: err
 load .config: state_dir
 load .priv: is_root
 load .util: valid_name, now_secs, str_ends, str_starts, join2, str_lower, sjoin, str_pad_end, plural, int_str
-load .ui: ok, info, warn, bad, card, kv, c_accent, c_good, c_warn, c_bad, c_dim
+load .ui: ok, info, warn, card, c_accent, c_good, c_dim
 load .theme: sym
 load .sysdb: db_has
 load .catalog: verified_catalog
@@ -68,7 +66,7 @@ fun load_profile(name: string) -> JsonValue {
     return json_parse(text)
 }
 
-// Запись через временный файл и rename: профиль не остаётся наполовину записанным.
+// Write via temp file and rename: the profile is never left half-written.
 fun save_profile(name: string, ref pkgs: string[]) {
     dir_create_all(prof_dir())
     set arr = json_array([])
@@ -85,7 +83,6 @@ fun save_profile(name: string, ref pkgs: string[]) {
     file_rename(tmp, p)
 }
 
-// Имена пакетов из записи профиля.
 fun profile_pkgs(doc: JsonValue) -> string[] {
     set out: string[] = []
     set pk = doc.get("packages")
@@ -98,7 +95,7 @@ fun profile_pkgs(doc: JsonValue) -> string[] {
     return out
 }
 
-// "tags: a, b" для записи каталога; "" если тегов нет.
+// "tags: a, b" for a catalog record; "" when there are no tags.
 fun tag_line(tags: JsonValue) -> string {
     set parts: string[] = []
     for i in 0..tags.len() {
@@ -113,19 +110,20 @@ fun tag_line(tags: JsonValue) -> string {
     return "tags: " + sjoin(parts, ", ")
 }
 
-// Профили из подписанного каталога; пустой массив, если каталог недоступен.
+// Profiles from the signed catalog; empty array when the catalog is unavailable.
 fun catalog_profiles() -> JsonValue {
     set out = json_array([])
     sus {
         set doc = json_parse(verified_catalog())
         rewrite out = doc.get("profiles")
     } catch {
-        // каталог недоступен — значит, кураторских профилей не показываем
+        // catalog unavailable -> no curated profiles
+        space
     }
     return out
 }
 
-// Найти профиль: сначала свой, потом кураторский из каталога.
+// Finds a profile: own first, then the curated one from the catalog.
 fun find_profile(name: string, ref ~source: string) -> string[] {
     if valid_name(name) && file_exists(prof_path(name)) {
         rewrite source = "local"
@@ -140,8 +138,6 @@ fun find_profile(name: string, ref ~source: string) -> string[] {
     }
     panic(err("no such profile \"" + name + "\": see `yuki profile list`", 764, ""))
 }
-
-// ── profile add / remove ────────────────────────────────────────────────
 
 public fun cmd_profile_add(name: string, ref pkgs: string[]) {
     need_root_for_profiles()
@@ -178,7 +174,7 @@ public fun cmd_profile_add(name: string, ref pkgs: string[]) {
             added.push(pkgs[i])
         }
     }
-    // мягкая сверка с каталогом: предупреждаем, но не блокируем
+    // soft check against the catalog: warn but do not block
     sus {
         set cat = json_parse(verified_catalog())
         set cp = cat.get("packages")
@@ -194,7 +190,8 @@ public fun cmd_profile_add(name: string, ref pkgs: string[]) {
             }
         }
     } catch {
-        // каталог недоступен — добавляем без сверки
+        // catalog unavailable -> add without the check
+        space
     }
     set n_all = all.len()
     save_profile(name, ref all)
@@ -237,8 +234,6 @@ public fun cmd_profile_remove(name: string, ref pkgs: string[]) {
     save_profile(name, ref all)
     ok("profile " + c_accent(name) + " updated: " + c_dim(int_str(n_all) + " " + plural(n_all, "package", "packages")))
 }
-
-// ── profile list / show / install ───────────────────────────────────────
 
 public fun cmd_profile_list() {
     set loc = local_profile_names()
@@ -287,7 +282,7 @@ public fun cmd_profile_install(name: string) {
         panic(err("profile \"" + name + "\" has no packages", 766, name))
     }
     set n_pk = pk.len()
-    // sjoin двигает массив, а pk ещё нужен install по ref — склеиваем вручную
+    // sjoin moves the array and pk is still needed by install via ref — concatenate by hand
     set listing = ""
     for i in 0..pk.len() {
         if i > 0 {
@@ -299,10 +294,8 @@ public fun cmd_profile_install(name: string) {
     cmd_sys_install_many(ref pk)
 }
 
-// ── каталог и теги ──────────────────────────────────────────────────────
-
-// Удобный просмотр подписанного каталога: имя, версия, резюме, теги,
-// лицензия и где смотреть код. Запрос фильтрует по имени, резюме и тегам.
+// Convenient view of the signed catalog: name, version, summary, tags,
+// license and source link. The query filters by name, summary and tags.
 public fun cmd_catalog(query: string) {
     set doc = json_parse(verified_catalog())
     set pk = doc.get("packages")
@@ -368,7 +361,7 @@ public fun cmd_catalog(query: string) {
     }
 }
 
-// Темы каталога в духе тегов GitHub: самые используемые сверху.
+// Catalog topics in GitHub-tag style: most used first.
 public fun cmd_tags(prefix: string) {
     set doc = json_parse(verified_catalog())
     set pk = doc.get("packages")
@@ -395,7 +388,6 @@ public fun cmd_tags(prefix: string) {
             }
         }
     }
-    // сортировка выбором по числу пакетов
     for i in 0..names.len() {
         set best: int64 = i
         for k in (i + 1)..names.len() {

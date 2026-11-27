@@ -1,0 +1,62 @@
+// resolver.ykn — dependency tree resolution.
+// Index versions are pinned exactly ("name@1.2.3"), so the result is
+// deterministic: no SAT solver is needed, only traversal and conflict checks.
+
+load core.panic: panic
+load std.strings: eq
+load .errors: err
+load .index: resolve
+load .util: dep_name, dep_version
+
+public struct Node {
+    name: string
+    version: string
+    url: string
+    checksum: string
+    signer: string
+    parent: int64
+}
+
+static RES_MAX_DEPTH: int32 = 16
+static RES_MAX_NODES: int64 = 256
+
+fun resolve_visit(name: string, want: string, parent: int64, depth: int32, ref ~out: Node[], ref ~view: InstallView) {
+    if depth > RES_MAX_DEPTH {
+        panic(err("dependency chain is too deep", 215, name))
+    }
+    for i in 0..out.len() {
+        if eq(out[i].name, name) {
+            if want.len() > 0 && !eq(out[i].version, want) {
+                panic(err("version conflict for " + name + ": " + out[i].version + " and " + want + " are both required", 217, name))
+            }
+            return
+        }
+    }
+    if out.len() >= RES_MAX_NODES {
+        panic(err("too many packages in the dependency tree", 216, name))
+    }
+
+    set rel = resolve(name, want)
+    set idx = out.len()
+    out.push(Node {
+        name: rel.name,
+        version: rel.version,
+        url: rel.url,
+        checksum: rel.checksum,
+        signer: rel.signer,
+        parent: parent,
+    })
+    view.add_node(rel.name, rel.version, parent)
+    view.draw(true)
+
+    for k in 0..rel.deps.len() {
+        resolve_visit(dep_name(rel.deps[k]), dep_version(rel.deps[k]), idx, depth + 1, ref ~out, ref ~view)
+    }
+}
+
+// Root first, then depth-first order. The tree grows on the panel as nodes are found.
+public fun resolve_tree(name: string, want: string, ref ~view: InstallView) -> Node[] {
+    set out: Node[] = []
+    resolve_visit(name, want, -1, 0, ref ~out, ref ~view)
+    return out
+}

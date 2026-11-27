@@ -1,23 +1,23 @@
-// config.ykn — пути, адрес индекса, allow-list хостов, лимиты.
+// config.ykn — paths, index address, host allow-list, limits.
 
 load core.panic: panic
 load std.fs.defaults: dir_app_config, dir_app_cache, dir_app_data
 load std.fs.dirs: dir_create_all
 load std.fs.files: file_exists, file_read_text
-load std.env: get_env, get_or
+load std.env: get_or
 load std.sysinfo: os_name, cpu_arch
 load std.strings: trim, eq, slice, contains
 load .util: str_ends, join2, sjoin, str_lines, str_lower, str_split
-load .errors: YukiError, err
+load .errors: err
 
 public static MAX_ENTRIES: int64 = 20000
-public static MAX_TOTAL: int64 = 536870912     // 512 MiB после распаковки
-public static MAX_FILE: int64 = 134217728      // 128 MiB на файл
-public static MAX_DOWNLOAD: int64 = 268435456  // 256 MiB архив
-public static MAX_INDEX_FILE: int64 = 1048576  // 1 MiB запись индекса
+public static MAX_TOTAL: int64 = 536870912     // 512 MiB unpacked
+public static MAX_FILE: int64 = 134217728      // 128 MiB per file
+public static MAX_DOWNLOAD: int64 = 268435456  // 256 MiB archive
+public static MAX_INDEX_FILE: int64 = 1048576  // 1 MiB index entry
 
-// Системный режим (install/uninstall/upgrade…): всё лежит в корневых каталогах,
-// куда обычный пользователь и непривилегированная фаза писать не могут.
+// System mode (install/uninstall/upgrade...): everything lives in root-owned
+// directories that neither a regular user nor the unprivileged phase can write.
 public fun system_mode() -> bool {
     return eq(get_or("YUKI_SYSTEM", ""), "1")
 }
@@ -33,8 +33,8 @@ public fun config_dir() -> string {
     return dir_app_config("yuki")
 }
 
-// Найти конфигурационный файл на чтение: сначала в config_dir(), а для проектных
-// команд без YUKI_CONFIG_DIR — фоллбек на системный /etc/yuki/<name>.
+// Config file lookup for reading: config_dir() first, and for project commands
+// without YUKI_CONFIG_DIR a fallback to the system-wide /etc/yuki/<name>.
 public fun resolve_config_file(name: string) -> string {
     set primary = join2(config_dir(), name)
     if file_exists(primary) {
@@ -71,8 +71,8 @@ public fun state_dir() -> string {
     return dir_app_data("yuki")
 }
 
-// "linux-x86_64": по этой строке выбирается готовая сборка в индексе.
-// Имена приводятся к единому виду (amd64 → x86_64, arm64 → aarch64), YUKI_TARGET переопределяет.
+// "linux-x86_64": this string selects the ready build in the index.
+// Names are normalized (amd64 -> x86_64, arm64 -> aarch64); YUKI_TARGET overrides.
 public fun host_target() -> string {
     set forced = str_lower(trim(get_or("YUKI_TARGET", "")))
     if forced.len() > 0 {
@@ -107,7 +107,7 @@ public fun ensure_dirs() {
     dir_create_all(state_dir())
 }
 
-// Адреса индекса: YUKI_INDEX (через запятую) или строки файла <config>/index_url (с фоллбеком на /etc/yuki/index_url).
+// Index addresses: YUKI_INDEX (comma-separated) or lines of <config>/index_url (fallback /etc/yuki/index_url).
 public fun index_urls() -> string[] {
     set raw = trim(get_or("YUKI_INDEX", ""))
     if raw.len() == 0 {
@@ -141,7 +141,7 @@ public fun index_url() -> string {
     return index_urls()[0]
 }
 
-// Скачивать можно только с этих хостов (плюс строки из <config>/allowed_hosts или /etc/yuki/allowed_hosts).
+// Downloads are allowed only from these hosts (plus <config>/allowed_hosts or /etc/yuki/allowed_hosts lines).
 public fun host_allowed(host: string) -> bool {
     set h = str_lower(host)
     if eq(h, "github.com") || eq(h, "codeload.github.com") || eq(h, "raw.githubusercontent.com") {

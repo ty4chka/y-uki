@@ -1,2 +1,8 @@
 target/
 bin/
+runtime/
+__pycache__/
+# build outputs of the two checked source trees; the top-level yuki-work/
+# snapshot is tracked on purpose (see TOOLCHAIN.md and the CI workflow)
+src/src/yuki-work/
+src/yuki/yuki-work/

@@ -1,25 +1,22 @@
-// theme.ykn — одна тема yuki, которую можно настроить под любой терминал.
-//
-// Что подстраивается само:
-//   * цвет: truecolor → 256 цветов → 16 цветов → без цвета (NO_COLOR, не-TTY);
-//   * символы: ✔ ◐ ├─ █ на UTF-8 терминалах, ASCII-замены в остальных (TERM=dumb/linux, не UTF-8);
-//   * анимация: только в живом терминале, не в CI и не в пайпе.
-//
-// Что настраивает пользователь — файл <config>/theme.toml (или YUKI_THEME_FILE):
-//   palette = "rgb" | "ansi" | "mono"   "ansi" берёт цвета самого терминала, «mono» — без цветов
+// theme.ykn — the one yuki theme, adaptable to any terminal.
+// What adapts automatically:
+//   * color: truecolor -> 256 colors -> 16 colors -> no color (NO_COLOR, not a TTY);
+//   * glyphs: ✔ ◐ ├─ █ on UTF-8 terminals, ASCII substitutes elsewhere (TERM=dumb/linux, non-UTF-8);
+//   * animation: only in a live terminal, not in CI and not in a pipe.
+// What the user configures — the file <config>/theme.toml (or YUKI_THEME_FILE):
+//   palette = "rgb" | "ansi" | "mono"   "ansi" takes the terminal colors, "mono" none
 //   [colors]  accent good warn bad logo dim speed
-//             "#rrggbb" | "256:N" | "ansi:red" | "dim" | "none", плюс "+bold" / "+dim"
+//             "#rrggbb" | "256:N" | "ansi:red" | "dim" | "none", plus "+bold" / "+dim"
 //   [symbols] ok fail warn info pending active branch last pipe rule arrow dot
-//             tl tr bl br bar_full bar_head bar_empty spinner  ("spinner" — кадры через пробел)
+//             tl tr bl br bar_full bar_head bar_empty spinner  ("spinner" = frames separated by spaces)
 //   [style]   unicode = true|false, animation = true|false, bar_gradient = true|false
-//
-// В Yukino нет изменяемых глобальных переменных, поэтому готовая тема хранится в
-// переменных окружения процесса (YUKI_T_*, YUKI_S_*): theme_init() кладёт их один раз.
+// Yukino has no mutable globals, so the ready theme lives in the process
+// environment (YUKI_T_*, YUKI_S_*): theme_init() sets it once.
 
 load core.utils: cast
 load std.io: is_stdout_terminal
 load std.env: get_or, set_env, has_env
-load std.outf: Styled, style, supports_truecolor
+load std.outf: style, supports_truecolor
 load std.strings: eq, contains, slice, parse_int
 load std.toml: parse, validate
 load std.fs.files: file_exists, file_read_text, file_write_text
@@ -34,8 +31,6 @@ public fun theme_path() -> string {
     }
     return join2(config_dir(), "theme.toml")
 }
-
-// ── значения по умолчанию ───────────────────────────────────────────────
 
 fun default_color(palette: string, role: string) -> string {
     if eq(palette, "ansi") {
@@ -124,8 +119,6 @@ fun detect_unicode() -> bool {
     return contains(loc, "utf-8") || contains(loc, "utf8")
 }
 
-// ── загрузка ────────────────────────────────────────────────────────────
-
 public fun theme_init() {
     if has_env("YUKI_THEME_READY") {
         return
@@ -197,8 +190,8 @@ public fun theme_palette() -> string {
     return get_or("YUKI_T_PALETTE", "rgb")
 }
 
-// По умолчанию анимация включена, если stdout — живой терминал.
-// YUKI_ANIM=0|1 (его выставляет theme_init) имеет приоритет.
+// Animation is on by default when stdout is a live terminal.
+// YUKI_ANIM=0|1 (set by theme_init) takes precedence.
 public fun animation_on() -> bool {
     set v = get_or("YUKI_ANIM", "")
     if v.len() == 0 {
@@ -214,8 +207,6 @@ public fun sym(name: string) -> string {
 public fun spinner_frames() -> string[] {
     return str_split(sym("spinner"), " ")
 }
-
-// ── раскраска ───────────────────────────────────────────────────────────
 
 fun theme_hexval(ch: string) -> int32 {
     set i = str_index("0123456789abcdef", str_lower(ch))
@@ -239,7 +230,7 @@ fun to_cube(v: int32) -> int32 {
     return (v - 35) / 40
 }
 
-// ближайший цвет из куба 6x6x6 для терминалов без truecolor
+// nearest color from the 6x6x6 cube for terminals without truecolor
 fun rgb256(r: int32, g: int32, b: int32) -> int32 {
     return 16 + 36 * to_cube(r) + 6 * to_cube(g) + to_cube(b)
 }
@@ -331,8 +322,8 @@ fun base_of(spec: string) -> string {
     return str_split(spec, "+")[0] + ""
 }
 
-// Цвет i-й ячейки полосы: плавный переход accent → good, если оба заданы как #rrggbb
-// и терминал умеет truecolor; иначе один цвет "good".
+// Color of bar cell i: smooth accent -> good gradient when both are #rrggbb
+// and the terminal supports truecolor; otherwise plain "good".
 public fun grad(text: string, i: int64, n: int64) -> string {
     if !eq(get_or("YUKI_GRAD", "1"), "1") || !supports_truecolor() || n < 2 {
         return paint("good", text)
@@ -353,10 +344,8 @@ public fun grad(text: string, i: int64, n: int64) -> string {
     return style(text).rgb(ar + (br - ar) * k / d, ag + (bg - ag) * k / d, ab + (bb - ab) * k / d).to_string()
 }
 
-// ── theme.toml по умолчанию ─────────────────────────────────────────────
-
 public fun theme_template() -> string {
-    set l = [
+    static l = [
         "# yuki theme. Everything here is optional: delete a line to get the default.",
         "# Put this file at <config>/theme.toml or point YUKI_THEME_FILE to it.",
         "",
@@ -401,8 +390,6 @@ public fun theme_write_template() -> string {
     file_write_text(path, theme_template())
     return path
 }
-
-// ── готовые пресеты ─────────────────────────────────────────────────────
 
 public fun theme_presets() -> string[] {
     return ["default", "ansi", "mono", "light", "contrast"]
@@ -450,8 +437,8 @@ fun preset_lines(name: string, palette: string, c: string[]) -> string[] {
     ]
 }
 
-// Готовый theme.toml пресета; "default" совпадает со встроенными значениями.
-// Неизвестное имя возвращает "" — вызывающая команда сама объяснит ошибку.
+// Ready theme.toml of a preset; "default" matches the built-in values.
+// An unknown name returns ""; the calling command explains the error itself.
 public fun theme_preset_toml(name: string) -> string {
     if eq(name, "default") {
         return theme_template()
@@ -466,7 +453,7 @@ public fun theme_preset_toml(name: string) -> string {
         return sjoin(preset_lines("contrast", "ansi", preset_colors("contrast")), "\n") + "\n"
     }
     if eq(name, "mono") {
-        set l = [
+        static l = [
             "# yuki theme preset: mono",
             "# written by `yuki theme use mono`; edit freely or delete the file.",
             "",

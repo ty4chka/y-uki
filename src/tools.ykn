@@ -1,12 +1,11 @@
-// tools.ykn — запросы и удобные команды: search, show, outdated, list, orphans,
-// tree/rdeps/related/graph/why, doctor, config, clean, hold, export/import,
-// explain, completions, help, pack.
+// tools.ykn — index queries and convenience commands: search, show, outdated,
+// list, orphans, tree/rdeps/related/graph/why, doctor, config, clean, hold,
+// export/import, explain, completions, help, pack.
 
-load core.utils: cast
 load core.panic: panic
+load core.utils: cast
 load std.io: print, println
-load std.env: get_or
-load std.json: JsonValue, json_parse
+load std.json: json_parse
 load std.fs.files: file_exists, file_read_text, file_write_text, file_remove, file_metadata, file_size
 load std.fs.dirs: dir_exists, dir_walk, dir_remove_all, dir_create_all
 load std.hash.blake3: blake3_file
@@ -21,20 +20,19 @@ load .theme: sym, theme_palette, theme_path, animation_on
 load .priv: is_root
 load .stage: stage_create, stage_remove, run_child, write_roots
 load .view: InstallView
-load .sysplan: PNode, plan_nodes
+load .sysplan: plan_nodes
 load .sysbuild: have_bwrap, build_policy
-load .sysdb: db_names, db_read, db_has, db_files, dependents_of, orphans, is_explicit, held_names, is_held
+load .sysdb: db_names, db_read, db_has, dependents_of, orphans, is_explicit, held_names, is_held
 load .sysinstall: cmd_sys_install
 load .catalog: verified_catalog
 load .trust: trusted_keys, threshold
-load .verify: VerifyError, verify_text_with_any, audit_tar
+load .verify: audit_tar
 load .policy: policy_check
 load .tarpack: tar_pack_tree
-load .index: seen_get, seen_set
 load .fetch: http_text
 load .explain: explain_lines
 load .cmdlist: help_lines, suggest, completion_script
-load .util: now_secs, valid_name, valid_version, ver_cmp, str_starts, str_index, join2, sjoin, str_lines, str_lower, str_pad_end, str_split, str_ends, int_str, fmt_bytes, fmt_speed
+load .util: now_secs, valid_name, valid_version, ver_cmp, str_starts, str_index, join2, sjoin, str_lines, str_lower, str_pad_end, str_split, str_ends, int_str, fmt_bytes
 
 load .i18n: t
 
@@ -59,8 +57,6 @@ fun tools_in_list(ref l: string[], x: string) -> bool {
     }
     return false
 }
-
-// ── запросы к индексу (без root, через непривилегированный ребёнок) ──────
 
 fun plan_for(name: string, want: string) -> PNode[] {
     set spec = name
@@ -154,8 +150,7 @@ public fun cmd_outdated() {
     }
 }
 
-
-// Издатель пакета: имя для показа и платформы (читаем прямо из каталога).
+// Package publisher: display name and platforms (read straight from the catalog).
 fun pub_disp(ref doc: JsonValue, name: string) -> string {
     set ps = doc.get("publishers")
     for i in 0..ps.len() {
@@ -188,7 +183,7 @@ fun pub_links(ref doc: JsonValue, name: string) -> string {
     return ""
 }
 
-// Поиск по имени, резюме и тегам; `tag:x` — точное совпадение тега.
+// Search over names, summaries and tags; `tag:x` matches a tag exactly.
 public fun cmd_search(term: string) {
     set doc = json_parse(verified_catalog())
     set pk = doc.get("packages")
@@ -252,8 +247,6 @@ public fun cmd_search(term: string) {
     }
 }
 
-// ── что установлено и как связано ───────────────────────────────────────
-
 public fun cmd_list(filter: string) {
     set names = db_names()
     set shown: int64 = 0
@@ -314,7 +307,8 @@ fun node_label(name: string) -> string {
     return c_bad(name) + c_dim(" (not installed)")
 }
 
-// up == false: от пакета вниз, к его зависимостям; up == true: вверх, к тем, кому он нужен.
+// up == false walks from the package down to its dependencies; up == true
+// walks up to the packages that need it.
 fun print_branch(name: string, prefix: string, depth: int64, up: bool, ref ~seen: string[]) {
     if depth > 8 {
         return
@@ -439,8 +433,6 @@ public fun cmd_graph(mode: string) {
     }
 }
 
-// ── диагностика окружения ───────────────────────────────────────────────
-
 fun chk(good: bool, yes_msg: string, no_msg: string, fix: string, ref ~problems: int64) {
     if good {
         ok(yes_msg)
@@ -485,8 +477,8 @@ public fun cmd_doctor() {
 
     set cfg = config_dir()
     if dir_exists(cfg) {
-        set mask: uint32 = 18
-        set zero: uint32 = 0
+        static mask: uint32 = 18
+        static zero: uint32 = 0
         set bits: uint32 = file_metadata(cfg).mode & mask
         chk(bits == zero, cfg + " is not writable by others", cfg + " is writable by group/others", "sudo chmod go-w " + cfg + "   (anyone could add trusted keys)", ref ~problems)
     }
@@ -559,8 +551,6 @@ public fun cmd_clean(everything: bool) {
     ok("removed " + int_str(count) + " file(s), freed " + fmt_bytes(freed))
 }
 
-// ── hold, export, import ────────────────────────────────────────────────
-
 public fun cmd_hold(name: string) {
     if name.len() == 0 {
         set h = held_names()
@@ -628,14 +618,12 @@ public fun cmd_import(file: string) {
     }
 }
 
-// ── справка ─────────────────────────────────────────────────────────────
-
 public fun cmd_explain(code: string) {
     set raw = str_lower(trim(code))
     if str_starts(raw, "y") {
         rewrite raw = slice(raw, 1, raw.len())
     }
-    set n: int64 = parse_int(raw) ?? 0
+    set n: int64 = cast(parse_int(raw) ?? 0, "int64")
     set l = explain_lines(n)
     if l.len() == 0 {
         panic(err(t("err.no_explanation", [code]), 201, code))
@@ -686,8 +674,6 @@ public fun cmd_completions(shell: string) {
     print(s)
 }
 
-// ── сборка пакета ───────────────────────────────────────────────────────
-
 fun tools_strip_root(p: string, root_in: string) -> string {
     set root: string = root_in
     while root.len() > 1 && str_ends(root, "/") {
@@ -699,7 +685,8 @@ fun tools_strip_root(p: string, root_in: string) -> string {
     return ""
 }
 
-// yuki pack <name> <dir> <out>: собрать архив пакета, проверить политику, показать хеш и кусок записи индекса.
+// yuki pack <name> <dir> <out>: build a package archive, check the policy,
+// print the hash and a piece of the index record.
 public fun cmd_pack(name: string, dir: string, out: string) {
     if !valid_name(name) {
         panic(err("invalid package name: " + name, 201, name))
@@ -733,7 +720,7 @@ public fun cmd_pack(name: string, dir: string, out: string) {
         panic(err(int_str(problems) + " path(s) break the install policy", 721, dir))
     }
     tar_pack_tree(out, dir)
-    set rep = audit_tar(out, MAX_ENTRIES, MAX_TOTAL, MAX_FILE, true)
+    audit_tar(out, MAX_ENTRIES, MAX_TOTAL, MAX_FILE, true)
     set checksum = "blake3:" + blake3_file(out)
     ok("packed " + int_str(count) + " files " + c_dim("(" + fmt_bytes(file_size(out)) + ")"))
     ok("archive audit passed")

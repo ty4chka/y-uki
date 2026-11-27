@@ -1,7 +1,7 @@
-// verify.ykn — слой доверия yuki.
-//   1. BLAKE3 архива (формат "blake3:<hex>", как в [libs.runtime] у yukino)
-//   2. Ed25519-подпись с доменным разделителем
-//   3. Аудит tar-архива ДО распаковки: пути, ссылки, setuid, лимиты размера
+// verify.ykn — the yuki trust layer.
+//   1. Archive BLAKE3 (format "blake3:<hex>", as in yukino [libs.runtime])
+//   2. Ed25519 signature with a domain separator
+//   3. tar archive audit BEFORE unpacking: paths, links, setuid, size limits
 
 load core.utils: cast
 load core.panic: panic
@@ -13,8 +13,8 @@ load std.fs.files: file_read_text
 load std.fs.archives.tar: tar_list
 load .util: is_hex, str_starts, str_lower, str_split, sjoin
 
-// Коды: 1 — несовпадение хеша, 2 — неверный формат хеша, 3 — плохая подпись,
-//       4 — небезопасный путь, 5 — ссылка/спецфайл в архиве, 6 — превышен лимит
+// Codes: 1 — hash mismatch, 2 — bad hash format, 3 — bad signature,
+//       4 — unsafe path, 5 — link/special file in the archive, 6 — limit exceeded
 public struct VerifyError {
     message: string
     code: int32
@@ -28,12 +28,10 @@ public struct AuditReport {
 
 static SIG_DOMAIN: string = "yuki-v1\n"
 
-// Что именно подписывается: подпись нельзя переиспользовать как чужую.
+// What exactly is signed: a signature cannot be reused as someone else's.
 public fun signed_message(text: string) -> string {
     return SIG_DOMAIN + text
 }
-
-// ── 1. хеш ──────────────────────────────────────────────────────────────
 
 public fun checksum_ok_format(c: string) -> bool {
     if !str_starts(c, "blake3:") || c.len() != 71 {
@@ -61,8 +59,6 @@ public fun check_blake3(path: string, expected: string) {
     }
 }
 
-// ── 2. подпись ──────────────────────────────────────────────────────────
-
 public fun verify_text(pubkey_hex: string, text: string, sig_hex: string) -> bool {
     if pubkey_hex.len() != 64 || sig_hex.len() != 128 {
         return false
@@ -80,7 +76,7 @@ public fun verify_signature(pubkey_hex: string, message_path: string, sig_hex: s
     return verify_text(pubkey_hex, file_read_text(message_path), sig_hex)
 }
 
-// Индекс ключа, которым подписан текст, или -1.
+// Index of the key that signed the text, or -1.
 public fun verify_text_with_any(ref keys: string[], text: string, sig_hex: string) -> int64 {
     for i in 0..keys.len() {
         if verify_text(trim(keys[i]), text, trim(sig_hex)) {
@@ -90,13 +86,13 @@ public fun verify_text_with_any(ref keys: string[], text: string, sig_hex: strin
     return -1
 }
 
-// ── 3. аудит архива ─────────────────────────────────────────────────────
-
 public fun is_safe_rel_path(p: string) -> bool {
     if p.len() == 0 || p.len() > 1024 {
         return false
     }
-    if str_starts(p, "/") || contains(p, "\\") || contains(p, "\0") || contains(p, ":") {
+    // Control characters (including \n, \r, \t) corrupt line-based records
+    // such as the transaction journal and the database file lists.
+    if str_starts(p, "/") || contains(p, "\\") || contains(p, "\0") || contains(p, ":") || contains(p, "\n") || contains(p, "\r") || contains(p, "\t") {
         return false
     }
     set parts = str_split(p, "/")
@@ -108,8 +104,8 @@ public fun is_safe_rel_path(p: string) -> bool {
     return true
 }
 
-// Разрешить относительную цель симлинка относительно пути самой ссылки.
-// Возвращает канонический относительный путь внутри usr/, opt/ или etc/, либо "" при ошибке.
+// Resolve a symlink target relative to the link's own path.
+// Returns the canonical relative path inside usr/, opt/ or etc/, or "" on error.
 public fun resolve_link_target(link_rel: string, target: string) -> string {
     if !is_safe_rel_path(link_rel) {
         return ""
@@ -147,8 +143,8 @@ public fun resolve_link_target(link_rel: string, target: string) -> string {
     return sjoin(stack, "/")
 }
 
-// Безопасная цель симлинка: относительная, без пробелов и ":", после разбора ".." остаётся
-// внутри usr/, opt/ или etc/ (то есть не выходит из дерева пакета наружу).
+// Safe symlink target: relative, no spaces or ":", and after ".." resolution it stays
+// inside usr/, opt/ or etc/ (i.e. does not escape the package tree).
 public fun link_target_ok(link_rel: string, target: string) -> bool {
     return resolve_link_target(link_rel, target).len() > 0
 }
@@ -163,8 +159,8 @@ public fun audit_tar(archive: string, max_entries: int64, max_total: int64, max_
         })
     }
 
-    set setid_bits: uint32 = 3072
-    set zero: uint32 = 0
+    static setid_bits: uint32 = 3072
+    static zero: uint32 = 0
     set total: int64 = 0
 
     for i in 0..entries.len() {
@@ -200,7 +196,8 @@ public fun audit_tar(archive: string, max_entries: int64, max_total: int64, max_
                 path: archive,
             })
         }
-        if entries[i].size > max_file {
+        // A negative size would shrink the accumulated total below the cap.
+        if entries[i].size < 0 || entries[i].size > max_file {
             panic(VerifyError {
                 message: "file is too large: " + entries[i].path,
                 code: 6,
