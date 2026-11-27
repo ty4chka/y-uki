@@ -1,13 +1,11 @@
-// stage.ykn — рабочий каталог транзакции и запуск непривилегированного ребёнка.
-//
+// stage.ykn — transaction working directory and unprivileged child launch.
 //   <state>/stage/<id>/           root, 0711
-//     dl/                         nobody, 0700: сюда пишет ребёнок (сеть, сборка)
-//     art/  root/  roots  approved   root: копии, распаковка, список корней и одобренных сборок
-//
-// Ребёнок — fork(): он наследует память, поэтому параметры не нужно никуда передавать,
-// а его результат читается только как данные: root проверяет всё заново.
-// Пока ребёнок работает, родитель не блокируется: он опрашивает файлы прогресса и
-// рисует панель (анимация не замирает).
+//     dl/                         nobody, 0700: the child writes here (network, build)
+//     art/  root/  roots  approved   root: copies, unpacking, root list, approved builds
+// The child is fork(): it inherits memory, so parameters need no marshalling,
+// its output is read only as data: root re-verifies everything.
+// While the child works the parent does not block: it polls the progress files and
+// paints the panel (the animation does not stall).
 
 load core.utils: cast
 load core.panic: panic
@@ -39,7 +37,7 @@ fun stage_token() -> string {
 public fun stage_create() -> string {
     set m700: uint32 = 448
     if !is_root() {
-        // запросы без root (search, show, outdated): рабочий каталог в temp с криптостойким именем и правами 0700
+        // rootless requests (search, show, outdated): working dir in temp with a crypto-random name and 0700 perms
         set top = join2(dir_temp(), "yuki-" + stage_token())
         dir_create_all(top)
         chmod(top, m700)
@@ -71,12 +69,12 @@ public fun stage_remove(stage: string) {
     dir_remove_all(stage)
 }
 
-// Корни установки: пишет родитель (root), читает ребёнок.
+// Installation roots: written by the parent (root), read by the child.
 public fun write_roots(stage: string, ref roots: string[]) {
     file_write_text(join2(stage, "roots"), sjoin(roots.cp(), "\n") + "\n")
 }
 
-// Текст от ребёнка недоверенный: без управляющих последовательностей, одной строкой, обрезанный.
+// Child text is untrusted: no control sequences, single line, truncated.
 fun clean_msg(s: string) -> string {
     set one = sjoin(str_split(strip_ansi(s), "\n"), " ")
     if one.len() > 300 {
@@ -85,8 +83,8 @@ fun clean_msg(s: string) -> string {
     return one
 }
 
-// mode: "plan" | "fetch" | "keys" | "catalog". Возвращается только после успешного завершения ребёнка.
-// jobmap[j] — узел панели для j-й загрузки (только для mode == "fetch"; иначе пустой массив).
+// mode: "plan" | "fetch" | "keys" | "catalog". Returns only after the child exits successfully.
+// jobmap[j] = panel node for download j (only for mode == "fetch"; else empty array).
 public fun run_child(stage: string, mode: string, ref ~view: InstallView, ref jobmap: int64[]) {
     set dl = join2(stage, "dl")
     set pid = fork()
@@ -116,10 +114,10 @@ public fun run_child(stage: string, mode: string, ref ~view: InstallView, ref jo
         exit(0)
     }
 
-    // родитель не блокируется: рисует панель по файлам прогресса ребёнка, сбрасывая регион на каждом шаге
+    // the parent does not block: it paints the panel from the child's progress files
     set t0 = now_ms()
     set pool_dir = join2(dl, "pool")
-    // Без region: строки скорости и активности сохраняются в полях панели и живут дольше кадра.
+    // No region: speed and activity strings stay in panel fields and outlive the frame.
     while waitpid(pid, 1) == 0 {
         if eq(mode, "fetch") && jobmap.len() > 0 {
             pool_paint(pool_dir, jobmap.len(), ref jobmap, t0, ref ~view)

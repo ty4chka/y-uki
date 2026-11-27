@@ -1,6 +1,6 @@
-// trust.ykn — хранилище доверенных ключей реестра и ключи подписи.
-//   <config>/trusted_keys   строки "<имя> <ed25519 pubkey hex>"
-//   <config>/keys/<имя>.seed  приватный seed (каталог 0700, файл 0600)
+// trust.ykn — trusted registry key store and signing keys.
+//   <config>/trusted_keys   lines "<name> <ed25519 pubkey hex>"
+//   <config>/keys/<name>.seed  private seed (dir 0700, file 0600)
 
 load core.utils: cast
 load core.panic: panic
@@ -54,7 +54,7 @@ public fun is_revoked(pubkey_hex: string) -> bool {
     return false
 }
 
-// Доверенные ключи без отозванных (отозванный ключ не вернётся даже из файла).
+// Trusted keys minus the revoked ones (a revoked key never comes back, even from the file).
 public fun trusted_keys() -> string[] {
     set out: string[] = []
     set f = trust_file_read()
@@ -70,7 +70,7 @@ public fun trusted_keys() -> string[] {
     return out
 }
 
-// Сколько разных доверенных ключей должны подписать ротацию (файл <config>/threshold, по умолчанию 1).
+// How many distinct trusted keys must sign a rotation (<config>/threshold, default 1).
 public fun threshold() -> int64 {
     set f = resolve_config_file("threshold")
     if file_exists(f) {
@@ -116,8 +116,8 @@ public fun trusted_names() -> string[] {
     return out
 }
 
-// Роль ключа: "publisher" (подтверждает содержимое записей) или "renewer" (может лишь продлевать срок).
-// Параллельно trusted_keys().
+// Key role: "publisher" (confirms record content) or "renewer" (may only extend expiry).
+// Parallel to trusted_keys().
 public fun trusted_roles() -> string[] {
     set out: string[] = []
     set f = trust_file_read()
@@ -137,7 +137,7 @@ public fun trusted_roles() -> string[] {
     return out
 }
 
-// Сколько разных издателей должны подтвердить содержимое записи (файл <config>/publish_threshold, по умолчанию 1).
+// How many distinct publishers must confirm a record's content (<config>/publish_threshold, default 1).
 public fun publish_threshold() -> int64 {
     set f = resolve_config_file("publish_threshold")
     if file_exists(f) {
@@ -149,7 +149,7 @@ public fun publish_threshold() -> int64 {
     return 1
 }
 
-// Отпечаток для сверки глазами: первые 16 hex от BLAKE3(pubkey_hex).
+// Fingerprint for eyeball checks: first 16 hex of BLAKE3(pubkey_hex).
 public fun fingerprint(pubkey_hex: string) -> string {
     set h = blake3_str(str_lower(pubkey_hex))
     return slice(h, 0, 4) + " " + slice(h, 4, 8) + " " + slice(h, 8, 12) + " " + slice(h, 12, 16)
@@ -210,7 +210,7 @@ public fun trust_remove(name: string) -> bool {
     return found
 }
 
-// Новый ключ подписи. Возвращает публичный ключ (hex).
+// New signing key. Returns the public key (hex).
 public fun keygen(name: string) -> string {
     if !valid_name(name) {
         panic(err("invalid key name: " + name, 601, name))

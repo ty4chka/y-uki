@@ -1,19 +1,18 @@
-// fetch.ykn — HTTPS-загрузка без внешних зависимостей.
-// Политика: только https, только хосты из allow-list, без порта и userinfo,
-// максимум 5 редиректов, жёсткий лимит размера. Целостность гарантирует не
-// транспорт, а BLAKE3/подпись: оборванная загрузка просто не пройдёт проверку.
-// Чтение из TLS выполняется через побайтовый буфер read_bytes (без паники на не-UTF-8
-// байтах бинарных архивов), а запись на диск — через File.write.
+// fetch.ykn — HTTPS downloads without external dependencies. Policy: https
+// only, allow-listed hosts, no port or userinfo, at most 5 redirects, hard size
+// limit. Integrity comes from BLAKE3/signatures, not from the transport.
 
 load core.utils: cast
 load core.panic: panic
-load std.net: tcp_connect, tls_connect, TlsStream
+load std.net: tcp_connect, tls_connect, TlsStream, TlsError
 load std.strings: trim, slice, contains, eq, parse_int
 load std.fs.files: File, file_open_write, file_remove, file_write_text
 load .errors: YukiError, err
 load .config: host_allowed
 load .util: now_ms, str_starts, str_index, str_lower, str_split, int_str
 
+// HTTP response: status, redirect location, body (for text fetches) and the
+// number of received bytes.
 public struct Response {
     status: int32
     location: string
@@ -26,13 +25,19 @@ struct Target {
     path: string
 }
 
-// Источник тела: обычное или chunked. raw — ещё не разобранные байты.
+// Body source: plain or chunked. raw holds the bytes not yet parsed.
 struct BodyReader {
     chunked: bool
     raw: string
     remaining: int64
     state: int32
 }
+
+// States of the chunked transfer decoder (BodyReader.state).
+static CHUNK_STATE_SIZE: int32 = 0   // reading the chunk-size line
+static CHUNK_STATE_DATA: int32 = 1   // reading chunk data
+static CHUNK_STATE_CRLF: int32 = 2   // reading the CRLF that ends chunk data
+static CHUNK_STATE_DONE: int32 = 3   // terminal zero-length chunk seen
 
 fun parse_target(url: string) -> Target {
     if !str_starts(url, "https://") {
@@ -63,7 +68,8 @@ fun parse_target(url: string) -> Target {
     return Target { host: host, path: path }
 }
 
-// Проверка URL без обращения к сети.
+// Checks a URL without touching the network. Panics with YukiError (401-403)
+// when the URL violates the policy.
 public fun check_url(url: string) {
     set _t = parse_target(url)
 }
@@ -80,12 +86,35 @@ fun header_value(ref hl: string[], name: string) -> string {
     return ""
 }
 
-// Побайтовое чтение из TLS без валидации UTF-8 (не вызывает NetError InvalidData на .tar.zst).
-// Транспортная ошибка — паника read_bytes (код 6), она распространяется наружу как отказ.
-// n == 0 — только чистый конец потока (EOF); смешение этих случаев недопустимо (P0).
-fun read_chunk(ref ~tls: TlsStream) -> string {
+// Missing close_notify surfaces as a TlsError mentioning "close_notify" or
+// "unexpected end"; TlsError has no dedicated end-of-stream code.
+fun tls_unexpected_eof(e: TlsError) -> bool {
+    set m = str_lower(e.message)
+    return contains(m, "close_notify") || contains(m, "unexpected end")
+}
+
+// Reads decrypted bytes into buf and returns the byte count, 0 on clean EOF.
+// For an EOF-delimited body (eof_ok) a missing TLS close_notify is accepted as
+// the end of the body; every other transport error is re-thrown (P0).
+fun tls_read(ref ~tls: TlsStream, buf: ptr<uint8>, max_len: int64, eof_ok: bool) -> int64 {
+    set n: int64 = 0
+    sus {
+        rewrite n = tls.read_bytes(buf, max_len)
+    } catch e: TlsError {
+        if eof_ok && tls_unexpected_eof(e) {
+            return 0
+        }
+        panic(e)
+    }
+    return n
+}
+
+// Byte-wise TLS read without UTF-8 validation (avoids NetError InvalidData
+// on .tar.zst). "" = stream end: clean EOF, or missing close_notify at the
+// end of an EOF-delimited body (eof_ok); other transport errors propagate.
+fun read_chunk(ref ~tls: TlsStream, eof_ok: bool) -> string {
     set buf: uint8[65536]
-    set n = tls.read_bytes(buf.as_ptr(), 65536)
+    set n = tls_read(ref ~tls, buf.as_ptr(), 65536, eof_ok)
     if n == 0 {
         return ""
     }
@@ -116,24 +145,26 @@ fun parse_hex(s: string) -> int64 {
     return n
 }
 
-// Следующий кусок тела; "" — тело закончилось; транспортная ошибка паникует (P0).
-fun next_piece(ref ~tls: TlsStream, ref ~r: BodyReader) -> string {
+// Next piece of the body; "" means the body ended. eof_ok applies only to the
+// plain (non-chunked) reader; chunked framing must complete with its terminal
+// zero chunk or the caller reports a truncated download (P0).
+fun next_piece(ref ~tls: TlsStream, ref ~r: BodyReader, eof_ok: bool) -> string {
     if !r.chunked {
         if r.raw.len() > 0 {
             set p = r.raw
             rewrite r.raw = ""
             return p
         }
-        return read_chunk(ref ~tls)
+        return read_chunk(ref ~tls, eof_ok)
     }
     loop {
-        if r.state == 3 {
+        if r.state == CHUNK_STATE_DONE {
             return ""
         }
-        if r.state == 0 {
+        if r.state == CHUNK_STATE_SIZE {
             set eol = str_index(r.raw, "\r\n")
             if eol < 0 {
-                set more = read_chunk(ref ~tls)
+                set more = read_chunk(ref ~tls, false)
                 if more.len() == 0 {
                     return ""
                 }
@@ -151,14 +182,14 @@ fun next_piece(ref ~tls: TlsStream, ref ~r: BodyReader) -> string {
             }
             rewrite r.raw = slice(r.raw, eol + 2, r.raw.len())
             if size == 0 {
-                rewrite r.state = 3
+                rewrite r.state = CHUNK_STATE_DONE
                 return ""
             }
             rewrite r.remaining = size
-            rewrite r.state = 1
-        } elif r.state == 1 {
+            rewrite r.state = CHUNK_STATE_DATA
+        } elif r.state == CHUNK_STATE_DATA {
             if r.raw.len() == 0 {
-                set more = read_chunk(ref ~tls)
+                set more = read_chunk(ref ~tls, false)
                 if more.len() == 0 {
                     return ""
                 }
@@ -172,12 +203,13 @@ fun next_piece(ref ~tls: TlsStream, ref ~r: BodyReader) -> string {
             rewrite r.raw = slice(r.raw, take, r.raw.len())
             rewrite r.remaining = r.remaining - take
             if r.remaining == 0 {
-                rewrite r.state = 2
+                rewrite r.state = CHUNK_STATE_CRLF
             }
             return piece
         } else {
+            // CHUNK_STATE_CRLF: the two bytes that end the chunk data.
             if r.raw.len() < 2 {
-                set more = read_chunk(ref ~tls)
+                set more = read_chunk(ref ~tls, false)
                 if more.len() == 0 {
                     return ""
                 }
@@ -185,7 +217,7 @@ fun next_piece(ref ~tls: TlsStream, ref ~r: BodyReader) -> string {
                 continue
             }
             rewrite r.raw = slice(r.raw, 2, r.raw.len())
-            rewrite r.state = 0
+            rewrite r.state = CHUNK_STATE_SIZE
         }
     }
     return ""
@@ -218,12 +250,11 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
     tls.write("GET " + t.path + " HTTP/1.0\r\nHost: " + t.host + "\r\nUser-Agent: yuki/0.1\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n")
     tls.flush()
 
-    // ── заголовки ──
     set head = ""
     set body_start = ""
     set found = false
     while !found {
-        set chunk = read_chunk(ref ~tls)
+        set chunk = read_chunk(ref ~tls, false)
         if chunk.len() == 0 {
             break
         }
@@ -261,9 +292,11 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
     if clen > max_bytes {
         panic(err("response is larger than the allowed limit", 407, url))
     }
+    // An EOF-delimited body (no Content-Length, not chunked) ends at the stream
+    // end; only for that framing may a missing close_notify pass as clean EOF.
+    set eof_delimited = !chunked && clen < 0
 
-    // ── тело ──
-    set rd = BodyReader { chunked: chunked, raw: body_start, remaining: 0, state: 0 }
+    set rd = BodyReader { chunked: chunked, raw: body_start, remaining: 0, state: CHUNK_STATE_SIZE }
     set received: int64 = 0
     set last: int64 = 0
     set t_start = now_ms()
@@ -271,7 +304,7 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
     if dest.len() == 0 {
         set body = ""
         loop {
-            set piece = next_piece(ref ~tls, ref ~rd)
+            set piece = next_piece(ref ~tls, ref ~rd, eof_delimited)
             if piece.len() == 0 {
                 break
             }
@@ -284,9 +317,9 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
                 break
             }
         }
-        // Обрыв не должен выглядеть успехом: короткое тело или незавершённый
-        // chunked (нет терминального нулевого чанка) — ошибка (P0).
-        if (clen >= 0 && received < clen) || (chunked && rd.state != 3) {
+        // A truncated body must not look like success: a short Content-Length
+        // body or a chunked stream without its terminal zero chunk fails (P0).
+        if (clen >= 0 && received < clen) || (chunked && rd.state != CHUNK_STATE_DONE) {
             panic(err("download was cut short", 408, url))
         }
         return Response { status: status, location: "", body: body, received: received }
@@ -308,7 +341,7 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
             if clen >= 0 && received >= clen {
                 break
             }
-            set n = tls.read_bytes(dl_buf.as_ptr(), 65536)
+            set n = tls_read(ref ~tls, dl_buf.as_ptr(), 65536, eof_delimited)
             if n == 0 {
                 break
             }
@@ -325,7 +358,7 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
         loop {
             set done_chunk = false
             region {
-                set piece = next_piece(ref ~tls, ref ~rd)
+                set piece = next_piece(ref ~tls, ref ~rd, false)
                 if piece.len() == 0 {
                     rewrite done_chunk = true
                 } else {
@@ -345,8 +378,9 @@ fun fetch_once(url: string, dest: string, max_bytes: int64, prog_path: string) -
             }
         }
     }
-    // Обрыв chunked-потока до терминального нулевого чанка — не успех (P0).
-    if chunked && rd.state != 3 {
+    // A chunked stream cut short before its terminal zero chunk is not a
+    // success (P0).
+    if chunked && rd.state != CHUNK_STATE_DONE {
         panic(err("download was cut short", 408, url))
     }
     if prog_path.len() > 0 {
@@ -389,7 +423,8 @@ fun get_follow(url: string, dest: string, max_bytes: int64, prog_path: string) -
     panic(err("too many redirects", 405, url))
 }
 
-// Небольшой текстовый ресурс (запись индекса, подпись).
+// Fetches a small text resource (index record, signature) and returns the body.
+// Panics with YukiError (404-408) on any failure.
 public fun http_text(url: string, max_bytes: int64) -> string {
     set r = get_follow(url, "", max_bytes, "")
     if r.status != 200 {
@@ -398,7 +433,9 @@ public fun http_text(url: string, max_bytes: int64) -> string {
     return r.body
 }
 
-// Загрузка архива в файл. prog_path ("" — без прогресса). Возвращает число байт.
+// Downloads an archive into a file. prog_path ("" disables progress) receives
+// "received total" updates. Returns the number of received bytes. Panics with
+// YukiError (404-408) on any failure and removes the partial file.
 public fun download(url: string, dest: string, max_bytes: int64, prog_path: string) -> int64 {
     set r = get_follow(url, dest, max_bytes, prog_path)
     if r.status != 200 {

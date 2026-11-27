@@ -1,11 +1,10 @@
-// apply.ykn — транзакция установки и удаления (root).
-//
-// Порядок для транзакции:
-//   0. предпроверка — просканировать ВСЕ пакеты транзакции, проверить policy_check / policy_check_link и конфликты до первой записи
-//   A. намерение    — сделать резервные копии, записать ВЕСЬ журнал, sync на диск
-//   B. запись       — каталоги, файлы и симлинки: временный файл → проверка хеша → точный chmod/chown → rename
-//   C. уборка       — удалить файлы старой версии, которых больше нет
-//   D. база         — записать запись о пакете, sync
+// apply.ykn — install/remove transaction (root).
+// Phase order:
+//   0. precheck — scan ALL transaction packages, run policy_check/policy_check_link and conflict checks before the first write
+//   A. intent  — backups and the full journal, then fsync
+//   B. write   — dirs, files, symlinks: temp file -> hash check -> exact chmod/chown -> rename
+//   C. cleanup — drop old-version files that are gone from the package
+//   D. db      — write the package record, fsync
 
 load core.utils: cast
 load core.panic: panic
@@ -40,14 +39,12 @@ fun exists_any(p: string) -> bool {
     return path_is_symlink(p) || file_exists(p) || dir_exists(p)
 }
 
-// ── блокировка ──────────────────────────────────────────────────────────
-
 fun lock_dir() -> string {
     return join2(state_dir(), "lock")
 }
 
-// Безопасная обёртка над dir_create: перехватывает панику FsError (AlreadyExists),
-// возвращая false, чтобы ветка очистки устаревшего лока корректно выполнялась.
+// Wrapper over dir_create that catches the FsError (AlreadyExists) panic and
+// returns false, so the stale-lock cleanup branch can run.
 fun try_dir_create(p: string) -> bool {
     if dir_exists(p) {
         return false
@@ -87,8 +84,6 @@ fun lock_acquire() {
 fun lock_release() {
     dir_remove_all(lock_dir())
 }
-
-// ── журнал и откат ──────────────────────────────────────────────────────
 
 fun tx_dir(txid: string) -> string {
     return join2(join2(state_dir(), "tx"), txid)
@@ -131,8 +126,8 @@ fun restore_link(dest: string, target: string) {
     }
 }
 
-// Откат по журналу в обратном порядке. Терпим к «наполовину сделанным» шагам:
-// удаление несуществующего и повторное восстановление безопасны.
+// Roll back from the journal in reverse order. Half-done steps are safe:
+// deleting a nonexistent path and re-restoring are idempotent.
 public fun rollback_tx(txid: string) {
     set jf = join2(tx_dir(txid), "journal")
     if !file_exists(jf) {
@@ -171,7 +166,7 @@ public fun rollback_tx(txid: string) {
     sync_disk()
 }
 
-// Незавершённые транзакции (питание, kill -9): откатить перед новой работой.
+// Interrupted transactions (power loss, kill -9): roll back before new work.
 fun recover_interrupted() {
     set base = join2(state_dir(), "tx")
     if !dir_exists(base) {
@@ -189,8 +184,6 @@ fun recover_interrupted() {
     }
 }
 
-// ── сканирование пакета ─────────────────────────────────────────────────
-
 fun apply_strip_root(p: string, root: string) -> string {
     if str_starts(p, root + "/") {
         return slice(p, root.len() + 1, p.len())
@@ -198,7 +191,7 @@ fun apply_strip_root(p: string, root: string) -> string {
     return ""
 }
 
-// Цель симлинка из списка, который root получил из аудированного архива ("" — такого нет).
+// Symlink target from the list root got from the audited archive ("" = none).
 fun link_target_for(ref items: ApplyItem[], n: int64, rel: string) -> string {
     for k in 0..items[n].links.len() {
         set p = str_split(items[n].links[k], "|")
@@ -209,8 +202,8 @@ fun link_target_for(ref items: ApplyItem[], n: int64, rel: string) -> string {
     return ""
 }
 
-// Строки "<hash> <mode> <kind> <path>"; для симлинка вместо hash стоит его цель, kind = l.
-// Только каталоги, обычные файлы и безопасные симлинки; каждый путь и цель симлинка прошли policy.
+// Lines "<hash> <mode> <kind> <path>"; for a symlink the target replaces the hash and kind = l.
+// Only directories, regular files and policy-safe symlinks; every path and link target passes policy.
 fun scan_package(pkg: string, root: string, ref items: ApplyItem[], n: int64) -> string[] {
     set out: string[] = []
     set zero: uint32 = 0
@@ -278,7 +271,7 @@ fun shared_dir(rel: string) -> bool {
     return depth_of(rel) < 2 || eq(rel, "usr/bin") || eq(rel, "usr/lib") || eq(rel, "usr/share") || eq(rel, "usr/sbin") || eq(rel, "usr/include") || eq(rel, "usr/local")
 }
 
-// Резервная копия и запись в журнал перед удалением/заменой существующего объекта.
+// Backs up and journals an existing object before it is removed or replaced.
 fun backup_existing(txid: string, rel: string, dest: string, old_line: string) {
     if path_is_symlink(dest) {
         set tgt = "-"
@@ -296,8 +289,8 @@ fun backup_existing(txid: string, rel: string, dest: string, old_line: string) {
     jr(txid, "bak " + dest + " " + bak + " " + int_str(cast(perm, "int64")))
 }
 
-// Предварительная проверка политики и файловых конфликтов по всем пакетам транзакции
-// до того, как первый пакет начнёт записывать изменения в корень /.
+// Policy and file-conflict precheck across every package of the transaction
+// before the first package writes anything under /.
 fun precheck_all_items(ref items: ApplyItem[], overwrite: bool) {
     set seen_paths: string[] = []
     set seen_pkgs: string[] = []
@@ -330,15 +323,12 @@ fun precheck_all_items(ref items: ApplyItem[], overwrite: bool) {
     }
 }
 
-// ── фиксация одного пакета ──────────────────────────────────────────────
-
 fun commit_item(txid: string, ref items: ApplyItem[], n: int64, overwrite: bool) {
     set name = items[n].name
     set root = items[n].root
     set fl = scan_package(name, root, ref items, n)
     set old = db_files(name)
 
-    // конфликты с чужими файлами
     for i in 0..fl.len() {
         if !eq(f_kind(fl[i]), "d") {
             set rel = f_path(fl[i])
@@ -354,7 +344,6 @@ fun commit_item(txid: string, ref items: ApplyItem[], n: int64, overwrite: bool)
         }
     }
 
-    // ── A. намерение: резервные копии и полный журнал до первого изменения ──
     dir_create_all(join2(tx_dir(txid), "db"))
     if db_has(name) {
         dir_copy_all(db_dir(name), join2(join2(tx_dir(txid), "db"), name))
@@ -390,7 +379,7 @@ fun commit_item(txid: string, ref items: ApplyItem[], n: int64, overwrite: bool)
             jr(txid, "new " + target)
         }
     }
-    // файлы старой версии, которых больше нет (изменённые пользователем конфиги остаются)
+    // stale: old-version files gone from the package (user-modified configs stay)
     set stale: string[] = []
     for i in 0..old.len() {
         if !eq(f_kind(old[i]), "d") {
@@ -406,7 +395,6 @@ fun commit_item(txid: string, ref items: ApplyItem[], n: int64, overwrite: bool)
     }
     sync_disk()
 
-    // ── B. запись ──
     set rootu: uint32 = 0
     set dir_mode: uint32 = 493
     for i in 0..fl.len() {
@@ -442,12 +430,10 @@ fun commit_item(txid: string, ref items: ApplyItem[], n: int64, overwrite: bool)
         file_rename(tmp, target)
     }
 
-    // ── C. уборка ──
     for i in 0..stale.len() {
         file_remove("/" + stale[i])
     }
 
-    // ── D. база ──
     set rec = PkgRecord {
         name: name,
         version: items[n].version,
@@ -463,9 +449,7 @@ fun commit_item(txid: string, ref items: ApplyItem[], n: int64, overwrite: bool)
     sync_disk()
 }
 
-// ── публичные операции ──────────────────────────────────────────────────
-
-// Установить пакеты одной транзакцией (зависимости раньше зависимых). Возвращает id транзакции.
+// Installs packages in one transaction (dependencies first). Returns the transaction id.
 public fun apply_transaction(ref items: ApplyItem[], overwrite: bool) -> string {
     lock_acquire()
     recover_interrupted()
@@ -561,7 +545,7 @@ public fun remove_package(name: string, force: bool) -> string {
     return txid
 }
 
-// Сверка файлов на диске с базой: строки "missing <path>" и "modified <path>".
+// Reconciles on-disk files with the database: lines "missing <path>" and "modified <path>".
 public fun check_package(name: string) -> string[] {
     set problems: string[] = []
     set files = db_files(name)

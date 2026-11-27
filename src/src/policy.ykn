@@ -1,5 +1,5 @@
-// policy.ykn — что пакет вообще может положить в систему.
-// Правила применяются к уже проверенному архиву, на стороне root.
+// policy.ykn — what a package may place in the system at all.
+// Rules apply to the already verified archive, on the root side.
 
 load std.strings: contains, eq
 load .util: str_starts, str_ends
@@ -14,7 +14,7 @@ fun starts_any(p: string, prefixes: string[]) -> bool {
     return false
 }
 
-// Пустая строка — путь допустим, иначе причина отказа.
+// Empty string = the path is allowed, otherwise the rejection reason.
 public fun policy_check(pkg: string, rel: string) -> string {
     if !is_safe_rel_path(rel) {
         return "unsafe path"
@@ -30,7 +30,7 @@ public fun policy_check(pkg: string, rel: string) -> string {
         return "outside of usr/, opt/ and etc/"
     }
 
-    // то, чего пакет не может касаться никогда
+    // paths a package must never touch
     set never = [
         "etc/yuki", "usr/lib/yuki", "usr/share/yuki", "var/lib/yuki",
         "etc/sudoers", "etc/pam.d", "etc/pam.conf", "etc/security",
@@ -47,7 +47,7 @@ public fun policy_check(pkg: string, rel: string) -> string {
         return "path is protected"
     }
 
-    // бинарник самого yuki может заменить только пакет yuki
+    // only the yuki package may replace yuki's own binary
     set yuki_bins = ["usr/bin/yuki", "usr/local/bin/yuki", "usr/sbin/yuki", "usr/local/sbin/yuki"]
     if starts_any(rel, yuki_bins) && !eq(pkg, "yuki") {
         return "only the yuki package may replace yuki"
@@ -55,7 +55,7 @@ public fun policy_check(pkg: string, rel: string) -> string {
     return ""
 }
 
-// Проверка как самого пути симлинка, так и его разрешённой цели по тем же правилам policy_check.
+// Checks both the symlink path and its resolved target with the policy_check rules.
 public fun policy_check_link(pkg: string, link_rel: string, target: string) -> string {
     set w1 = policy_check(pkg, link_rel)
     if w1.len() > 0 {
@@ -72,7 +72,7 @@ public fun policy_check_link(pkg: string, link_rel: string, target: string) -> s
     return ""
 }
 
-// Файлы в etc/ — конфигурация: изменённые пользователем не перезаписываются.
+// Files under etc/ are configuration: user-modified ones are not overwritten.
 public fun is_config(rel: string) -> bool {
     return str_starts(rel, "etc/")
 }

@@ -1,11 +1,11 @@
-// util.ykn — время, валидация имён/версий/hex.
+// util.ykn — time, name/version/hex validation.
 
 load std.datetime: now_utc, to_unix_secs, to_unix_millis
 load std.strings: split, lines, lower, pad_end, repeat, str_join, parse_int, slice, contains, eq
-// В актуальном std эти функции возвращают T? (bool?/int64?), а проект работает
-// с обычными bool/int64. Обёртки дают прежнюю семантику: null → false / -1.
-// ВАЖНО: имена обёрток НЕ должны совпадать с std (str_*), иначе компилятор
-// путает их с одноимёнными функциями std и обёртка вызывает сама себя.
+// The current std returns T? (bool?/int64?) from these functions while the project
+// uses plain bool/int64. The wrappers give the old semantics: null -> false / -1.
+// IMPORTANT: wrapper names must NOT collide with std (str_*), otherwise the compiler
+// confuses them with the same-named std functions and the wrapper calls itself.
 load std.strings: starts_with, ends_with, index_of, index_of_from
 load std.fs.paths: path_join
 
@@ -19,18 +19,18 @@ public fun str_ends(s: string, suffix: string) -> bool {
     return r ?? false
 }
 
-// индекс первого вхождения начиная с from_idx или -1
+// index of the first occurrence starting at from_idx, or -1
 public fun str_index_from(s: string, sub: string, from_idx: int64) -> int64 {
     set r: int64? = index_of_from(s, sub, from_idx)
     return r ?? -1
 }
 
-// path_join из std вариадический; на двух аргументах он иногда не проходит проверку типов
+// path_join from std is variadic; on two arguments it sometimes fails type checking
 public fun join2(a: string, b: string) -> string {
     return path_join(a, b)
 }
 
-// индекс первого вхождения или -1
+// index of the first occurrence or -1
 public fun str_index(s: string, sub: string) -> int64 {
     set r: int64? = index_of(s, sub)
     return r ?? -1
@@ -58,7 +58,7 @@ public fun is_hex(s: string) -> bool {
     return true
 }
 
-// [a-z0-9_-], 1..64 символа, не начинается с - или _
+// [a-z0-9_-], 1..64 chars, must not start with - or _
 public fun valid_name(name: string) -> bool {
     if name.len() == 0 || name.len() > 64 {
         return false
@@ -74,7 +74,7 @@ public fun valid_name(name: string) -> bool {
     return true
 }
 
-// строго MAJOR.MINOR.PATCH, только цифры
+// strict MAJOR.MINOR.PATCH, digits only
 public fun valid_version(v: string) -> bool {
     if v.len() == 0 || v.len() > 32 {
         return false
@@ -95,8 +95,7 @@ public fun valid_version(v: string) -> bool {
     return true
 }
 
-// 1 если a > b, -1 если a < b, 0 если равны. Вызывать только после valid_version.
-// Число из строки цифр без parse_int (только 0-9; остальное считается за 0).
+// Number from a digit string without parse_int (0-9 only; anything else counts as 0).
 public fun digits_val(s: string) -> int64 {
     set v: int64 = 0
     for i in 0..s.len() {
@@ -111,6 +110,7 @@ public fun digits_val(s: string) -> int64 {
     return v
 }
 
+// 1 if a > b, -1 if a < b, 0 if equal. Call only after valid_version.
 public fun ver_cmp(a: string, b: string) -> int64 {
     set pa = str_split(a, ".")
     set pb = str_split(b, ".")
@@ -129,7 +129,7 @@ public fun ver_cmp(a: string, b: string) -> int64 {
     return r
 }
 
-// "имя@1.2.3" — зависимость с точным закреплением версии
+// "name@1.2.3" — dependency with an exact version pin
 public fun valid_dep_spec(s: string) -> bool {
     set p = str_split(s, "@")
     return p.len() == 2 && valid_name(p[0]) && valid_version(p[1])
@@ -143,7 +143,7 @@ public fun dep_version(s: string) -> string {
     return str_split(s, "@")[1] + ""
 }
 
-// Для подсказки «did you mean»: число правок между словами.
+// For the "did you mean" hint: number of edits between words.
 public fun edit_distance(a: string, b: string) -> int64 {
     set prev: int64[] = []
     for j in 0..(b.len() + 1) {
@@ -171,13 +171,11 @@ public fun edit_distance(a: string, b: string) -> int64 {
     return prev[b.len()]
 }
 
-// ---------------------------------------------------------------------------
-// Копирующие обёртки над std.strings.
-// std split/lines/lower/pad_end/repeat/str_join возвращают указатель на ОДИН общий
-// потоковый буфер: следующий вызов затирает предыдущий результат (eq(lower(a), lower(b))
-// всегда истинно, два живых split портят друг друга). Здесь результат сразу копируется
-// в регион вызывающего: массив через .cp(), строка через конкатенацию.
-// ---------------------------------------------------------------------------
+// Copying wrappers over std.strings.
+// std split/lines/lower/pad_end/repeat/str_join return a pointer to ONE shared
+// streaming buffer: the next call overwrites the previous result (eq(lower(a), lower(b))
+// is always true, two live splits corrupt each other). Here the result is copied at once
+// into the caller region: arrays via .cp(), strings via concatenation.
 public fun str_split(s: string, delim: string) -> string[] {
     set r: string[] = split(s, delim)
     return r.cp()
@@ -208,7 +206,7 @@ public fun sjoin(items: string[], delim: string = "") -> string {
     return r + ""
 }
 
-// 1 → «package», иначе «packages» — единое множественное число для всех сводок.
+// 1 -> "package", else "packages" — one plural form for all summaries.
 public fun plural(n: int64, one: string, many: string) -> string {
     if n == 1 {
         return one
@@ -216,8 +214,8 @@ public fun plural(n: int64, one: string, many: string) -> string {
     return many
 }
 
-// ── обход бага кодогена aarch64: cast(N -> "string") сегфолтится (§репро 9–13) ──
-// Все числовые -> string в yuki идут через эти функции, пока баг не починен в компиляторе.
+// Workaround for an aarch64 codegen bug: cast(N -> "string") segfaults (§repro 9-13).
+// All numeric -> string conversions in yuki go through these functions until the compiler bug is fixed.
 
 fun digit_str(d: int64) -> string {
     if d == 0 { return "0" }
@@ -232,7 +230,7 @@ fun digit_str(d: int64) -> string {
     return "9"
 }
 
-// int64 -> string, цифры в правильном порядке, минус для отрицательных.
+// int64 -> string, digits in the right order, minus for negatives.
 public fun int_str(n: int64) -> string {
     if n == 0 { return "0" }
     set neg = false
@@ -253,8 +251,8 @@ public fun int_str(n: int64) -> string {
     return out
 }
 
-// Байты в человекочитаемый вид (замена std.stdotool.format.format_bytes,
-// которая внутри идёт через сломанный int->string).
+// Human-readable byte sizes (replaces std.stdotool.format.format_bytes,
+// which internally goes through the broken int->string).
 public fun fmt_bytes(n: int64) -> string {
     if n < 1024 {
         return int_str(n) + " B"
@@ -271,12 +269,11 @@ public fun fmt_bytes(n: int64) -> string {
         }
         rewrite ui += 1
     }
-    // одна десятая: rest*10/1024
     set tenth: int64 = (rest * 10) / 1024
     return int_str(v) + "." + int_str(tenth) + " " + units[ui]
 }
 
-// Скорость в человекочитаемый вид (замена format_speed).
+// Human-readable speed (replaces format_speed).
 public fun fmt_speed(bytes_per_sec: int64) -> string {
     return fmt_bytes(bytes_per_sec) + "/s"
 }

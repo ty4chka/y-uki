@@ -1,22 +1,20 @@
-// publisher.ykn — профили издателей каталога: кто стоит за пакетом.
-//
-// publishers.json в репозитории индекса (необязательный файл):
+// publisher.ykn — catalog publisher profiles: who stands behind a package.
+// publishers.json in the index repository (optional file):
 // [
 //   {
-//     "name": "json-yukino",          // a-z, 0-9, _ и -
+//     "name": "json-yukino",          // a-z, 0-9, _ and -
 //     "display": "json-yukino maintainers",
 //     "summary": "the people behind the json-yukino packages",
-//     "github": "json-yukino",        // аккаунт на GitHub (можно пусто)
-//     "gitlab": "",                   // аккаунт на GitLab (можно пусто)
-//     "homepage": "https://…",
-//     "keys": ["3fa9 c07d"]           // отпечатки ключей издателя
+//     "github": "json-yukino",        // GitHub account (may be empty)
+//     "gitlab": "",                   // GitLab account (may be empty)
+//     "homepage": "https://...",
+//     "keys": ["3fa9 c07d"]           // publisher key fingerprints
 //   }
 // ]
-//
-// Пакет ссылается на издателя полем "publisher" в release.json: поле попадает
-// в запись индекса (write_entry) и в catalog.json. Верификация честная:
-// подпись релиза (signer) должна быть среди keys издателя — тогда
-// install/catalog/search показывают ✓, иначе ✘ с советом пересмотреть решение.
+// A package references a publisher via the "publisher" field in release.json; it lands
+// into the index entry (write_entry) and catalog.json. Verification is strict:
+// the release signer must be among the publisher's keys, then
+// install/catalog/search show ✓; otherwise ✘ with advice to reconsider.
 
 load core.panic: panic
 load std.io: println
@@ -28,12 +26,12 @@ load .ui: info, card, c_accent, c_good, c_dim
 load .theme: sym
 load .util: sjoin, str_split, str_pad_end, plural, int_str
 
-// Подписанный каталог одним куском (одна загрузка на команду).
+// The signed catalog as one piece (one download per command).
 public fun pub_doc() -> JsonValue {
     return json_parse(verified_catalog())
 }
 
-// Имя издателя пакета из каталога ("" — поле не задано).
+// Publisher name of the package from the catalog ("" = field not set).
 public fun pub_name_in(ref doc: JsonValue, pkg: string) -> string {
     set pk = doc.get("packages")
     for i in 0..pk.len() {
@@ -44,8 +42,8 @@ public fun pub_name_in(ref doc: JsonValue, pkg: string) -> string {
     return ""
 }
 
-// Индекс профиля издателя по имени; -1 — в каталоге его нет.
-// JsonValue передаётся по ref: класс, по значению это move (в цикле нельзя).
+// Index of the publisher profile by name; -1 = not in the catalog.
+// JsonValue is passed by ref: it is a class, by value it would move (not usable in a loop).
 public fun pub_index(ref doc: JsonValue, name: string) -> int64 {
     set ps = doc.get("publishers")
     for i in 0..ps.len() {
@@ -56,7 +54,7 @@ public fun pub_index(ref doc: JsonValue, name: string) -> int64 {
     return -1
 }
 
-// Как показывать издателя: display, а без него — name.
+// How to show the publisher: display, and name when there is none.
 public fun pub_display_in(ref doc: JsonValue, name: string) -> string {
     set pi = pub_index(ref doc, name)
     if pi >= 0 {
@@ -68,7 +66,7 @@ public fun pub_display_in(ref doc: JsonValue, name: string) -> string {
     return name
 }
 
-// Платформы издателя одной строкой: github.com/X · gitlab.com/Y · homepage
+// Publisher platforms on one line: github.com/X · gitlab.com/Y · homepage
 public fun pub_links_in(ref doc: JsonValue, name: string) -> string {
     set parts: string[] = []
     set pi = pub_index(ref doc, name)
@@ -90,12 +88,12 @@ public fun pub_links_in(ref doc: JsonValue, name: string) -> string {
     return sjoin(parts, " · ")
 }
 
-// Отпечаток без пробелов: «3fa9 c07d» и «3fa9c07d» — одно и то же.
+// Fingerprint without spaces: "3fa9 c07d" and "3fa9c07d" are the same.
 fun norm_fp(s: string) -> string {
     return sjoin(str_split(s, " "), "")
 }
 
-// Подпись релиза входит в ключи издателя?
+// Is the release signer among the publisher's keys?
 public fun pub_has_key(ref doc: JsonValue, name: string, signer: string) -> bool {
     set pi = pub_index(ref doc, name)
     if pi < 0 {
@@ -110,8 +108,6 @@ public fun pub_has_key(ref doc: JsonValue, name: string, signer: string) -> bool
     }
     return false
 }
-
-// ── команды ─────────────────────────────────────────────────────────────
 
 public fun cmd_publisher_list() {
     set doc = pub_doc()

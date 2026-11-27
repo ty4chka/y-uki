@@ -1,12 +1,11 @@
-// sysinstall.ykn — системные команды в духе pacman: install, uninstall, upgrade,
+// sysinstall.ykn — pacman-style system commands: install, uninstall, upgrade,
 // list, info, files, owns, check, audit, history, rollback.
-//
-// install = пять шагов, и только последний делает root-изменения:
-//   1. ребёнок (nobody, no_new_privs) приносит записи индекса
-//   2. root заново проверяет подписи, срок, откат и строит план; спрашивает подтверждение
-//   3. ребёнок скачивает готовые сборки или собирает в песочнице то, что root одобрил
-//   4. root копирует артефакты к себе, заново проверяет blake3, аудит и политику путей, распаковывает в свой каталог
-//   5. root применяет транзакцию с журналом и откатом
+// install = five steps, and only the last one makes root changes:
+//   1. the child (nobody, no_new_privs) brings the index records
+//   2. root re-checks signatures, expiry and rollback, builds the plan, asks for confirmation
+//   3. the child downloads ready builds or sandbox-builds what root approved
+//   4. root copies the artifacts over, re-checks blake3, audit and path policy, unpacks into its own dir
+//   5. root applies the transaction with journal and rollback
 
 load core.utils: cast
 load core.panic: panic
@@ -69,8 +68,6 @@ fun ask(question: string, default_yes: bool) -> bool {
     return yes
 }
 
-// ── план и подтверждения ────────────────────────────────────────────────
-
 fun show_plan(ref nodes: PNode[]) {
     println("")
     println("  " + c_accent("::") + " " + c_bold("Packages") + " (" + int_str(nodes.len()) + ")  " + c_dim("target " + host_target()))
@@ -87,7 +84,7 @@ fun show_plan(ref nodes: PNode[]) {
             println("    " + c_bad(sym("fail")) + " " + label + c_bad("   no binary for this platform and no source"))
         }
     }
-    // издатель: подпись релиза должна сходиться с ключами его профиля
+    // publisher: the release signer must match the keys of its profile
     set cat = pub_doc()
     for i in 0..nodes.len() {
         set pn = pub_name_in(ref cat, nodes[i].rel.name)
@@ -107,7 +104,7 @@ fun show_plan(ref nodes: PNode[]) {
     println("")
 }
 
-// Сборка из исходников — всегда отдельное явное согласие; --yes его не заменяет.
+// Building from source always needs separate explicit consent; --yes does not cover it.
 fun approve_builds(stage: string, ref nodes: PNode[]) {
     set approved: string[] = []
     set policy = build_policy()
@@ -155,8 +152,6 @@ fun approve_builds(stage: string, ref nodes: PNode[]) {
     file_write_text(join2(stage, "approved"), sjoin(approved, "\n") + "\n")
 }
 
-// ── проверка принесённого root'ом ───────────────────────────────────────
-
 fun plain_file(path: string) -> bool {
     if !file_exists(path) {
         return false
@@ -176,8 +171,8 @@ fun norm_tar_path(p: string) -> string {
     return r
 }
 
-// Всё, что лежит в dl/, принёс недоверенный процесс: копируем к себе (только обычные
-// файлы, без симлинков), заново проверяем хеш, аудит и политику путей ДО распаковки.
+// Everything in dl/ was brought by an untrusted process: copy it over (regular
+// files only, no symlinks), re-check hash, audit and path policy BEFORE unpacking.
 fun collect(stage: string, ref nodes: PNode[], ref items: ApplyItem[]) -> int64 {
     set unpinned: int64 = 0
     set dl = join2(stage, "dl")
@@ -215,7 +210,7 @@ fun collect(stage: string, ref nodes: PNode[], ref items: ApplyItem[]) -> int64 
         }
         audit_tar(copy, MAX_ENTRIES, MAX_TOTAL, MAX_FILE, true)
 
-        // Предраспаковочная проверка политики путей и целей симлинков (ДО tar_unpack и chmod!)
+        // Pre-unpack path and symlink-target policy check (BEFORE tar_unpack and chmod)
         set links: string[] = []
         set ents = tar_list(copy)
         for e in 0..ents.len() {
@@ -241,7 +236,7 @@ fun collect(stage: string, ref nodes: PNode[], ref items: ApplyItem[]) -> int64 
         dir_create_all(root_dir)
         tar_unpack(copy, root_dir)
 
-        // Восстанавливаем полные права файлов из проверенных метаданных архива
+        // Restore full file permissions from the verified archive metadata
         set zero: uint32 = 0
         for e in 0..ents.len() {
             set rel = norm_tar_path(ents[e].path)
@@ -297,8 +292,6 @@ fun collect(stage: string, ref nodes: PNode[], ref items: ApplyItem[]) -> int64 
     return unpinned
 }
 
-// ── install ─────────────────────────────────────────────────────────────
-
 fun root_names(ref roots: string[]) -> string {
     set names: string[] = []
     for i in 0..roots.len() {
@@ -307,7 +300,7 @@ fun root_names(ref roots: string[]) -> string {
     return sjoin(names, ", ")
 }
 
-// Один общий план и одна транзакция для всех корней (install a b c, upgrade).
+// One shared plan and one transaction for all roots (install a b c, upgrade).
 fun install_core(stage: string, ref roots: string[]) {
     set t0 = now_ms()
     set dl = join2(stage, "dl")
@@ -318,7 +311,7 @@ fun install_core(stage: string, ref roots: string[]) {
     run_child(stage, "plan", ref ~quiet, ref nomap)
 
     step(2, 2, "verifying signatures and building the plan as root")
-    // Сначала строим план с record = false, чтобы не мутировать seen до согласия пользователя
+    // First build the plan with record = false so seen is not mutated before user consent
     set nodes = plan_nodes(dl, ref roots, false, false)
     show_plan(ref nodes)
     set work: int64 = 0
@@ -344,11 +337,11 @@ fun install_core(stage: string, ref roots: string[]) {
             panic(err("aborted", 753, ""))
         }
     }
-    // Фиксируем seq в seen после подтверждения плана
+    // Commit seq to seen after the plan is confirmed
     set _recorded = plan_nodes(dl, ref roots, false, true)
     approve_builds(stage, ref nodes)
 
-    // живая панель: дерево только из того, что реально будет ставиться
+    // live panel: the tree contains only what will actually be installed
     set view = init InstallView("install " + c_accent(root_names(ref roots)), animation_on())
     set vmap: int64[] = []
     for i in 0..nodes.len() {
@@ -364,7 +357,7 @@ fun install_core(stage: string, ref roots: string[]) {
     }
     view.set_phase(1, int_str(work) + " package(s) " + c_dim(sym("dot") + " signed by " + nodes[0].rel.signer))
 
-    // порядок задач совпадает с порядком в sysbuild.child_fetch: узлы bin и src по порядку
+    // task order matches sysbuild.child_fetch: bin and src nodes in order
     set jobmap: int64[] = []
     for i in 0..nodes.len() {
         if eq(nodes[i].action, "bin") || eq(nodes[i].action, "src") {
@@ -377,7 +370,7 @@ fun install_core(stage: string, ref roots: string[]) {
     set items: ApplyItem[] = []
     set unpinned = collect(stage, ref nodes, ref items)
 
-    // осмотр содержимого до записи в систему: сводка «что плохо выглядит»
+    // scan contents before writing to the system: a "what looks bad" summary
     set worst: int64 = 0
     for i in 0..items.len() {
         view.set_activity("content scan: " + items[i].name)
@@ -406,7 +399,7 @@ fun install_core(stage: string, ref roots: string[]) {
     view.set_phase(3, "committed " + c_dim("(" + txid + ")"))
     view.finish()
 
-    // обновление самого yuki: новый бинарник обязан запуститься, иначе откат
+    // updating yuki itself: the new binary must start, otherwise rollback
     for i in 0..items.len() {
         if eq(items[i].name, "yuki") {
             set bin = "/usr/bin/yuki"
@@ -460,7 +453,6 @@ fun check_spec(spec: string) {
     }
 }
 
-// install a b c: один план и одна транзакция.
 public fun cmd_sys_install_many(ref specs: string[]) {
     sys_need_root()
     for i in 0..specs.len() {
@@ -474,9 +466,7 @@ public fun cmd_sys_install(spec: string) {
     cmd_sys_install_many(ref one)
 }
 
-// ── uninstall / upgrade ─────────────────────────────────────────────────
-
-// Убрать зависимости удалённого пакета, которые больше никому не нужны (-Rs).
+// Removes the removed package's dependencies that no one needs anymore (-Rs).
 fun remove_unneeded(deps_csv: string) {
     set ds = str_split(deps_csv, ",")
     for i in 0..ds.len() {
@@ -514,7 +504,7 @@ public fun cmd_sys_uninstall(name: string, force: bool) {
     info("undo with `sudo yuki rollback " + txid + "`")
 }
 
-// Убрать все осиротевшие зависимости.
+// Removes all orphaned dependencies.
 public fun cmd_sys_autoremove() {
     sys_need_root()
     set orph = orphans()
@@ -541,7 +531,7 @@ public fun cmd_sys_autoremove() {
     }
 }
 
-// Версия из индекса (через ребёнка), "" если подходящего релиза нет (снят или удалён).
+// Version from the index (via the child), "" when there is no suitable release (yanked or gone).
 fun peek_version(name: string, want: string) -> string {
     set spec = name
     if want.len() > 0 {
@@ -571,7 +561,7 @@ fun peek_version(name: string, want: string) -> string {
     return found
 }
 
-// upgrade: один общий план и ОДНА транзакция для всех обновляемых пакетов.
+// upgrade: one shared plan and ONE transaction for all updated packages.
 public fun cmd_sys_upgrade(only: string) {
     sys_need_root()
     set names = db_names()
@@ -612,8 +602,6 @@ public fun cmd_sys_upgrade(only: string) {
     }
     install_one(ref todo)
 }
-
-// ── запросы ─────────────────────────────────────────────────────────────
 
 public fun cmd_sys_list() {
     set names = db_names()
@@ -682,7 +670,7 @@ public fun cmd_sys_check(only: string) {
     }
 }
 
-// Сверка установленного с подписанным индексом: снятые (yanked) и пропавшие релизы.
+// Reconciles installed packages with the signed index: yanked and vanished releases.
 public fun cmd_sys_audit() {
     sys_need_root()
     set names = db_names()
@@ -716,7 +704,7 @@ public fun cmd_sys_history() {
     }
 }
 
-// Откат последней незакрытой транзакции (или указанной).
+// Rolls back the last open transaction (or the specified one).
 public fun cmd_sys_rollback(txid: string) {
     sys_need_root()
     set target = txid

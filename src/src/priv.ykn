@@ -1,9 +1,8 @@
-// priv.ykn — разделение привилегий.
-//
-// Сеть, разбор чужих данных и сборка выполняются в дочернем процессе, который
-// сначала переходит в отдельную группу процессов setpgid(0, 0) и отказывается от root:
-// setgroups(0) → setgid → setuid → проверка, что root вернуть нельзя → no_new_privs.
-// Root-часть ничему из того, что принёс ребёнок, не верит и всё проверяет заново.
+// priv.ykn — privilege separation.
+// Network, untrusted parsing and builds run in a child process that
+// first moves into its own process group with setpgid(0, 0) and drops root:
+// setgroups(0) -> setgid -> setuid -> check that root cannot be regained -> no_new_privs.
+// The root part trusts nothing the child brought and re-verifies everything.
 
 load core.panic: panic
 load core.process: exit
@@ -26,15 +25,15 @@ public fun is_root() -> bool {
     return geteuid() == 0
 }
 
-// Пользователь без прав для сетевой и сборочной фазы.
+// Unprivileged user for the network and build phases.
 public fun nobody_id() -> c_uint {
     set id: c_uint = 65534
     return id
 }
 
-// Настоящий uid ядра: первое число строки "Uid:" в /proc/self/status.
-// proot подменяет только возврат geteuid(), а статус процесса остаётся честным.
-// При ошибке чтения возвращаем -1 (fail-closed для детекции PRoot).
+// Real kernel uid: first number of the "Uid:" line in /proc/self/status.
+// proot only fakes geteuid()'s return value; the process status stays honest.
+// On read error returns -1 (fail-closed for PRoot detection).
 fun real_uid() -> int64 {
     set f = "/proc/self/status"
     if !file_exists(f) {
@@ -63,14 +62,14 @@ fun real_uid() -> int64 {
     return -1
 }
 
-// Эмуляция привилегий (proot): geteuid()==0, но ядро видит обычного пользователя.
-// Там setuid() ничего не меняет, а kill(-1) убивает весь сеанс Termux.
+// Privilege emulation (proot): geteuid()==0 while the kernel sees a regular user.
+// There setuid() changes nothing and kill(-1) kills the whole Termux session.
 public fun enc_is_proot() -> bool {
     if geteuid() != 0 {
         return false
     }
-    // Fail-closed: proot — только если ядро ЯВНО показало ненулевой uid.
-    // При неясности считаем, что root настоящий, и привилегии сбрасываем.
+    // Fail-closed: proot only when the kernel EXPLICITLY reports a nonzero uid.
+    // When unclear, treat root as real and drop privileges.
     return real_uid() > 0
 }
 
@@ -106,8 +105,8 @@ public fun drop_privileges(uid: c_uint, gid: c_uint) {
     }
 }
 
-// Завершить всю группу процессов дочернего воркера (-child_pid), не затрагивая
-// сторонние системные демоны ОС, работающие под пользователем nobody.
+// Kills the whole process group of the child worker (-child_pid) without touching
+// unrelated OS daemons running as the nobody user.
 public fun kill_child_group(child_pid: int64) {
     if !is_root() || enc_is_proot() || child_pid <= 1 {
         return
@@ -119,7 +118,7 @@ public fun kill_child_group(child_pid: int64) {
     }
 }
 
-// Совместимая обёртка: больше не вызывает глобальный kill(-1, 9) от nobody.
+// Compatibility wrapper; must not issue a global kill(-1, 9) as nobody.
 public fun kill_all_as(uid: c_uint) {
     if !is_root() || enc_is_proot() {
         return
@@ -127,7 +126,7 @@ public fun kill_all_as(uid: c_uint) {
     set _unused = uid
 }
 
-// Сбросить буферы файловой системы на диск: точки долговечности журнала транзакции.
+// Flushes filesystem buffers to disk: durability points of the transaction journal.
 public fun sync_disk() {
     sync()
 }

@@ -1,7 +1,7 @@
-// manifest.ykn — правка yuki.toml текстом (комментарии и форматирование сохраняются).
-// Зависимости yuki живут в [libs.runtime] и выглядят так:
-//   name = { link = "https://…/x.tar.gz", checksum = "blake3:…" } # yuki:1.2.0
-// yukino сам скачает и сверит checksum; хвост "# yuki:<версия>" читает только yuki.
+// manifest.ykn — text edits of yuki.toml (comments and formatting preserved).
+// yuki dependencies live in [libs.runtime] and look like:
+//   name = { link = "https://.../x.tar.gz", checksum = "blake3:..." } # yuki:1.2.0
+// yukino downloads and verifies checksum; only yuki reads the "# yuki:<version>" trailer.
 
 load core.panic: panic
 load std.fs.files: file_exists, file_read_text, file_write_text, file_rename
@@ -27,7 +27,7 @@ fun read_manifest() -> string {
     return file_read_text(MANIFEST)
 }
 
-// Запись через временный файл и rename: manifest не остаётся наполовину записанным.
+// Write via temp file and rename: the manifest is never left half-written.
 fun write_manifest(text: string) {
     set tmp = MANIFEST + ".yuki-tmp"
     file_write_text(tmp, text)
@@ -60,7 +60,7 @@ fun quoted(t: string, key: string) -> string {
     return slice(t, start, e)
 }
 
-// via — имя пакета, который потянул эту зависимость ("" для прямых)
+// via — name of the package that pulled this dependency ("" for direct ones)
 public fun dep_line(name: string, url: string, checksum: string, version: string, via: string) -> string {
     set tail = version
     if via.len() > 0 {
@@ -69,7 +69,7 @@ public fun dep_line(name: string, url: string, checksum: string, version: string
     return name + " = { link = \"" + url + "\", checksum = \"" + checksum + "\" } # yuki:" + tail
 }
 
-// Добавить или заменить зависимость в [libs.runtime].
+// Adds or replaces a dependency in [libs.runtime].
 public fun upsert_dep(name: string, line: string) {
     set ls = str_lines(read_manifest())
     set out: string[] = []
@@ -135,7 +135,7 @@ public fun remove_dep(name: string) -> bool {
     return removed
 }
 
-// Зависимости, которыми управляет yuki (строки с маркером "# yuki:").
+// Dependencies managed by yuki (lines with the "# yuki:" marker).
 public fun list_deps() -> Dep[] {
     set out: Dep[] = []
     set ls = str_lines(read_manifest())
@@ -171,7 +171,7 @@ public fun list_deps() -> Dep[] {
     return out
 }
 
-// via — список владельцев через запятую: пакет остаётся, пока он нужен хотя бы одному.
+// via — comma-separated owners: the dependency stays while any owner needs it.
 public fun merge_via(existing: string, add: string) -> string {
     if add.len() == 0 {
         return existing
@@ -209,8 +209,8 @@ fun has_owner(via: string, owner: string) -> bool {
     return false
 }
 
-// Убрать owner из владельцев всех зависимостей; зависимости без владельцев удаляются
-// (и цепочкой их собственные). Общие зависимости остаются. Возвращает число удалённых.
+// Removes owner from every dependency owner list; ownerless dependencies are deleted
+// (and their own dependencies recursively). Shared ones stay. Returns the number removed.
 public fun prune_owner(owner: string) -> int64 {
     set pending: string[] = [owner]
     set removed: int64 = 0

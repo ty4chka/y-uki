@@ -1,9 +1,9 @@
-// sysplan.ykn — план установки системных пакетов.
-// Одни и те же функции работают в двух ролях:
-//   * в непривилегированном ребёнке (fetch_missing = true): качает записи индекса;
-//   * в root (fetch_missing = false): заново проверяет те же записи по своим ключам.
-// Дереву зависимостей root верит только после собственной проверки подписей.
-// Корней может быть несколько: `install a b c` и `upgrade` строят один общий план.
+// sysplan.ykn — system package install planning.
+// The same functions serve two roles:
+//   * in the unprivileged child (fetch_missing = true): fetch index records;
+//   * in root (fetch_missing = false): re-verify the same records with its own keys.
+// root trusts the dependency tree only after verifying the signatures itself.
+// There can be several roots: `install a b c` and `upgrade` build one shared plan.
 
 load core.panic: panic
 load std.fs.files: file_exists, file_read_text, file_write_text
@@ -23,7 +23,7 @@ public struct PNode {
     action: string
 }
 
-// action: "bin" готовая сборка, "src" сборка из исходников, "installed" уже стоит, "none" нечего ставить
+// action: "bin" ready build, "src" build from source, "installed" already present, "none" nothing to install
 
 static PLAN_MAX_DEPTH: int32 = 16
 static PLAN_MAX_NODES: int64 = 128
@@ -44,7 +44,7 @@ public fun spec_ver(spec: string) -> string {
     return ""
 }
 
-// Корни установки лежат в <stage>/roots (пишет root, читает ребёнок).
+// Installation roots live in <stage>/roots (root writes, child reads).
 public fun read_roots(dl: string) -> string[] {
     set out: string[] = []
     set f = join2(path_parent(dl), "roots")
@@ -117,7 +117,7 @@ fun plan_visit(dl: string, name: string, want: string, parent: int64, depth: int
     }
 }
 
-// roots — строки "имя" или "имя@версия".
+// roots — lines "name" or "name@version".
 public fun plan_nodes(dl: string, ref roots: string[], fetch_missing: bool, record: bool) -> PNode[] {
     set out: PNode[] = []
     for i in 0..roots.len() {
@@ -126,19 +126,19 @@ public fun plan_nodes(dl: string, ref roots: string[], fetch_missing: bool, reco
     return out
 }
 
-// Шаг ребёнка «plan»: принести и разобрать все записи дерева.
+// Child "plan" step: fetch and parse all records of the tree.
 public fun child_plan(dl: string) {
     set roots = read_roots(dl)
     set nodes = plan_nodes(dl, ref roots, true, false)
 }
 
-// Шаг ребёнка «keys»: принести ротацию ключей.
+// Child "keys" step: fetch the key rotation.
 public fun child_keys(dl: string) {
     file_write_text(join2(dl, "rotation.json"), index_get("keys/rotation.json", MAX_INDEX_FILE))
     file_write_text(join2(dl, "rotation.sigs"), index_get("keys/rotation.sigs", 65536))
 }
 
-// Шаг ребёнка «catalog»: каталог пакетов для поиска.
+// Child "catalog" step: the package catalog for search.
 public fun child_catalog(dl: string) {
     file_write_text(join2(dl, "catalog.json"), index_get("catalog.json", 4194304))
     file_write_text(join2(dl, "catalog.json.sig"), index_get("catalog.json.sig", 4096))

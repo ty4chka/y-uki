@@ -1,6 +1,6 @@
-// tools.ykn — запросы и удобные команды: search, show, outdated, list, orphans,
-// tree/rdeps/related/graph/why, doctor, config, clean, hold, export/import,
-// explain, completions, help, pack.
+// tools.ykn — index queries and convenience commands: search, show, outdated,
+// list, orphans, tree/rdeps/related/graph/why, doctor, config, clean, hold,
+// export/import, explain, completions, help, pack.
 
 load core.utils: cast
 load core.panic: panic
@@ -57,8 +57,6 @@ fun tools_in_list(ref l: string[], x: string) -> bool {
     }
     return false
 }
-
-// ── запросы к индексу (без root, через непривилегированный ребёнок) ──────
 
 fun plan_for(name: string, want: string) -> PNode[] {
     set spec = name
@@ -152,8 +150,7 @@ public fun cmd_outdated() {
     }
 }
 
-
-// Издатель пакета: имя для показа и платформы (читаем прямо из каталога).
+// Package publisher: display name and platforms (read straight from the catalog).
 fun pub_disp(ref doc: JsonValue, name: string) -> string {
     set ps = doc.get("publishers")
     for i in 0..ps.len() {
@@ -186,7 +183,7 @@ fun pub_links(ref doc: JsonValue, name: string) -> string {
     return ""
 }
 
-// Поиск по имени, резюме и тегам; `tag:x` — точное совпадение тега.
+// Search over names, summaries and tags; `tag:x` matches a tag exactly.
 public fun cmd_search(term: string) {
     set doc = json_parse(verified_catalog())
     set pk = doc.get("packages")
@@ -250,8 +247,6 @@ public fun cmd_search(term: string) {
     }
 }
 
-// ── что установлено и как связано ───────────────────────────────────────
-
 public fun cmd_list(filter: string) {
     set names = db_names()
     set shown: int64 = 0
@@ -312,7 +307,8 @@ fun node_label(name: string) -> string {
     return c_bad(name) + c_dim(" (not installed)")
 }
 
-// up == false: от пакета вниз, к его зависимостям; up == true: вверх, к тем, кому он нужен.
+// up == false walks from the package down to its dependencies; up == true
+// walks up to the packages that need it.
 fun print_branch(name: string, prefix: string, depth: int64, up: bool, ref ~seen: string[]) {
     if depth > 8 {
         return
@@ -437,8 +433,6 @@ public fun cmd_graph(mode: string) {
     }
 }
 
-// ── диагностика окружения ───────────────────────────────────────────────
-
 fun chk(good: bool, yes_msg: string, no_msg: string, fix: string, ref ~problems: int64) {
     if good {
         ok(yes_msg)
@@ -557,8 +551,6 @@ public fun cmd_clean(everything: bool) {
     ok("removed " + int_str(count) + " file(s), freed " + fmt_bytes(freed))
 }
 
-// ── hold, export, import ────────────────────────────────────────────────
-
 public fun cmd_hold(name: string) {
     if name.len() == 0 {
         set h = held_names()
@@ -626,8 +618,6 @@ public fun cmd_import(file: string) {
     }
 }
 
-// ── справка ─────────────────────────────────────────────────────────────
-
 public fun cmd_explain(code: string) {
     set raw = str_lower(trim(code))
     if str_starts(raw, "y") {
@@ -684,8 +674,6 @@ public fun cmd_completions(shell: string) {
     print(s)
 }
 
-// ── сборка пакета ───────────────────────────────────────────────────────
-
 fun tools_strip_root(p: string, root_in: string) -> string {
     set root: string = root_in
     while root.len() > 1 && str_ends(root, "/") {
@@ -697,7 +685,8 @@ fun tools_strip_root(p: string, root_in: string) -> string {
     return ""
 }
 
-// yuki pack <name> <dir> <out>: собрать архив пакета, проверить политику, показать хеш и кусок записи индекса.
+// yuki pack <name> <dir> <out>: build a package archive, check the policy,
+// print the hash and a piece of the index record.
 public fun cmd_pack(name: string, dir: string, out: string) {
     if !valid_name(name) {
         panic(err("invalid package name: " + name, 201, name))

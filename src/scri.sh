@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/sh
-# Шаг 1 (запускать в Termux): собрать и отправить тестовый индекс yuki с пакетом hello.
-# Запуск:  sh 1-termux-index.sh
-# Что нужно заранее: yuki (команда работает), ключ `test` (yuki keys gen test), git,
-# репозиторий ty4chka/yuki-index (публичный), релиз hello-1.0.0 с архивом, вход в GitHub (gh auth login).
+# Step 1 (run in Termux): build and push a test yuki index with the hello package.
+# Run:  sh 1-termux-index.sh
+# Prerequisites: working yuki, a `test` key (yuki keys gen test), git,
+# the ty4chka/yuki-index repo (public), a hello-1.0.0 release with an archive, and gh auth login.
 set -e
 
 OWNER="${OWNER:-ty4chka}"
@@ -75,7 +75,7 @@ echo "индекс: $INDEX_URL"
 echo "чтобы работали yuki search/install: export YUKI_INDEX=$INDEX_URL   (или запишите URL в <config>/index_url)"
 echo "raw.githubusercontent.com кеширует до нескольких минут: подождите перед следующим шагом."
 
-# Подготовка клиента: положить бинарь и второй скрипт в Ubuntu (proot-distro), если он уже установлен
+# Client setup: drop the binary and the second script into Ubuntu (proot-distro), if already installed
 ROOTFS="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/proot-distro/installed-rootfs/ubuntu"
 if [ -d "$ROOTFS" ] && [ -f "$HOME/bin/yuki-real" ]; then
   mkdir -p "$ROOTFS/usr/local/bin" "$ROOTFS/root"

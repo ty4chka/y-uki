@@ -1,8 +1,7 @@
-// tarpack.ykn — упаковщик tar(.zst/.gz) для `yuki pack` и сборки из исходников.
-//
-// Здесь: относительные имена, записи каталогов, настоящий режим файла (только rwx),
-// потоковое копирование, без setuid/setgid, mtime = 0 (воспроизводимый хеш),
-// гарантированное закрытие дескрипторов через defer.
+// tarpack.ykn — tar(.zst/.gz) packer for `yuki pack` and source builds.
+// Constraints: relative names, directory entries, real file mode (rwx only),
+// streaming copies, no setuid/setgid, mtime = 0 (reproducible hash),
+// guaranteed descriptor closing via defer.
 
 load core.utils: cast
 load core.panic: panic
@@ -13,7 +12,7 @@ load std.strings: slice
 load .errors: YukiError, err
 load .util: str_starts, str_ends
 
-// Восьмеричное число ровно из digits цифр (старшие нули слева).
+// Octal number exactly `digits` wide (zero-padded).
 fun oct_str(val: int64, digits: int64) -> string {
     set res = ""
     set v: int64 = val
@@ -25,7 +24,7 @@ fun oct_str(val: int64, digits: int64) -> string {
     return res
 }
 
-// Один заголовок ustar (512 байт).
+// One ustar header (512 bytes).
 fun tar_header(ref out: File, name: string, size: int64, mode: int64, is_dir: bool) {
     set hdr: uint8[512]
     set nb: bytes = cast(name, "bytes")
@@ -132,7 +131,7 @@ fun pack_raw_tar(raw: string, root: string) {
     out.write(zeros.as_ptr(), 1024)
 }
 
-// Упаковать каталог root в archive. Расширение решает сжатие: .tar.zst, .tar.gz/.tgz или без сжатия.
+// Packs directory root into archive. The extension picks compression: .tar.zst, .tar.gz/.tgz or none.
 public fun tar_pack_tree(archive: string, root_in: string) {
     set root: string = root_in
     while root.len() > 1 && str_ends(root, "/") {

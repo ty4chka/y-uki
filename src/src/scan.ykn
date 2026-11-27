@@ -1,15 +1,12 @@
-// scan.ykn — первичный умный осмотр содержимого пакета на вредоносные паттерны.
-//
-// Идея: перед тем как root запишет файлы в систему, пройтись по распакованному
-// дереву и поискать то, что «плохо выглядит»: обратные шеллы, майнеры,
-// закрепление в системе, скрытые payload'ы, setuid, затирание логов.
-// Это НЕ антивирус: сигнатур нет, только эвристики с уровнями опасности.
-//
-//   yuki scan <dir>            осмотреть любую распакованную папку
-//   (install показывает сводку сам, до записи в систему)
-//
-// Итог — сводка «что плохо выглядит» с советом пересмотреть решение;
-// high-находки отдельным вопросом блокируют установку (YUKI_ALLOW_RISKY=1 — осознанный обход).
+// scan.ykn — first-pass heuristic scan of package contents for malicious patterns.
+// Before root writes files into the system, walk the unpacked tree
+// and look for what "looks bad": reverse shells, miners,
+// persistence, hidden payloads, setuid, log wiping.
+// This is NOT an antivirus: no signatures, only heuristics with severity levels.
+//   yuki scan <dir>            scan any unpacked folder
+//   (install shows the summary itself, before writing to the system)
+// The result is a "what looks bad" summary with advice to reconsider;
+// high findings block the install unless YUKI_ALLOW_RISKY=1 opts out deliberately.
 
 load core.panic: panic
 load core.utils: cast
@@ -25,13 +22,13 @@ load .util: str_starts, join2, str_lower, str_pad_end, int_str
 
 public struct ScanHit {
     sev: string      // "high" | "med" | "low"
-    file: string     // путь внутри пакета
-    why: string      // что именно выглядит плохо
+    file: string     // path inside the package
+    why: string      // what exactly looks bad
 }
 
 static MAX_HITS: int64 = 40
 static MAX_FILES: int64 = 1500
-static MAX_BYTES: int64 = 262144   // текстовые файлы крупнее 256 KiB не читаем
+static MAX_BYTES: int64 = 262144   // text files larger than 256 KiB are not read
 
 fun add_hit(ref hits: ScanHit[], ref ~n: int64, sev: string, file: string, why: string) {
     if n >= MAX_HITS {
@@ -41,15 +38,15 @@ fun add_hit(ref hits: ScanHit[], ref ~n: int64, sev: string, file: string, why: 
     rewrite n += 1
 }
 
-// Одна эвристика = один if. Паттерны ищутся в нижнем регистре содержимого файла.
+// One heuristic = one if. Patterns are matched against lowercased file content.
 fun look(t: string, file: string, ref hits: ScanHit[], ref ~n: int64) {
-    // скачать и сразу выполнить
+    // download and run at once
     set dl = contains(t, "curl") || contains(t, "wget")
     set piped = contains(t, "| sh") || contains(t, "|sh ") || contains(t, "| bash") || contains(t, "|bash")
     if dl && piped {
         add_hit(ref hits, ref ~n, "high", file, "pipes a downloaded script straight into a shell")
     }
-    // обратные шеллы
+    // reverse shells
     if contains(t, "/dev/tcp/") {
         add_hit(ref hits, ref ~n, "high", file, "opens a raw reverse shell over /dev/tcp")
     }
@@ -59,7 +56,7 @@ fun look(t: string, file: string, ref hits: ScanHit[], ref ~n: int64) {
     if contains(t, "nc -e ") || contains(t, "ncat -e ") {
         add_hit(ref hits, ref ~n, "high", file, "hands a shell to the network with netcat -e")
     }
-    // закрепление и доступ
+    // persistence and access
     if contains(t, "authorized_keys") {
         add_hit(ref hits, ref ~n, "high", file, "touches ssh authorized_keys (backdoor access)")
     }
@@ -72,19 +69,19 @@ fun look(t: string, file: string, ref hits: ScanHit[], ref ~n: int64) {
     if contains(t, "/etc/cron") || contains(t, "crontab ") {
         add_hit(ref hits, ref ~n, "med", file, "installs a cron job (persistence)")
     }
-    // разрушение и секреты
+    // destruction and secrets
     if contains(t, "rm -rf /") {
         add_hit(ref hits, ref ~n, "high", file, "destructive `rm -rf /`")
     }
     if contains(t, "/etc/shadow") {
         add_hit(ref hits, ref ~n, "high", file, "reads /etc/shadow password hashes")
     }
-    // майнеры
+    // miners
     set mine = contains(t, "stratum+tcp") || contains(t, "stratum+ssl") || contains(t, "cryptonight") || contains(t, "xmrig") || contains(t, "minerd")
     if mine {
         add_hit(ref hits, ref ~n, "high", file, "cryptocurrency miner strings")
     }
-    // скрытые payload'ы
+    // hidden payloads
     set b64 = contains(t, "base64 -d") || contains(t, "base64 --decode") || contains(t, "openssl enc -d")
     if b64 {
         add_hit(ref hits, ref ~n, "med", file, "decodes a hidden payload (base64/openssl)")
@@ -92,21 +89,21 @@ fun look(t: string, file: string, ref hits: ScanHit[], ref ~n: int64) {
     if contains(t, "eval") && contains(t, "base64") {
         add_hit(ref hits, ref ~n, "high", file, "eval of base64-decoded text (obfuscated code)")
     }
-    // права и модули
+    // privileges and modules
     if contains(t, "chmod u+s") || contains(t, "chmod +s") || contains(t, "chmod 4755") || contains(t, "chmod 6755") {
         add_hit(ref hits, ref ~n, "med", file, "sets setuid bits")
     }
     if contains(t, "insmod ") || contains(t, "modprobe ") {
         add_hit(ref hits, ref ~n, "med", file, "loads kernel modules")
     }
-    // заметание следов
+    // covering tracks
     if contains(t, "history -c") || contains(t, "shred -") || contains(t, "wevtutil") {
         add_hit(ref hits, ref ~n, "med", file, "clears logs / covers tracks")
     }
     if contains(t, "pastebin.com") {
         add_hit(ref hits, ref ~n, "med", file, "pulls content from a paste service")
     }
-    // мелочи
+    // minor findings
     if contains(t, "telemetry") || contains(t, "phone home") {
         add_hit(ref hits, ref ~n, "low", file, "mentions telemetry / phoning home")
     }
@@ -115,8 +112,8 @@ fun look(t: string, file: string, ref hits: ScanHit[], ref ~n: int64) {
     }
 }
 
-// Рекурсивный обход дерева пакета с бюджетом: не глубже 8, не больше MAX_FILES,
-// docs/man пропускаем, крупные и бинарные файлы не читаем.
+// Recursive tree walk with a budget: depth <= 8, at most MAX_FILES;
+// docs/man skipped, large and binary files are not read.
 fun scan_tree(base: string, sub: string, depth: int64, ref hits: ScanHit[], ref ~n: int64, ref ~files: int64) {
     if depth > 8 || files >= MAX_FILES {
         return
@@ -187,7 +184,7 @@ fun scan_tree(base: string, sub: string, depth: int64, ref hits: ScanHit[], ref 
     }
 }
 
-// Осмотреть распакованное дерево; вернёт находки (может быть пусто).
+// Scans an unpacked tree; returns the findings (possibly empty).
 public fun scan_dir(root: string) -> ScanHit[] {
     set hits: ScanHit[] = []
     set n: int64 = 0
@@ -196,8 +193,8 @@ public fun scan_dir(root: string) -> ScanHit[] {
     return hits
 }
 
-// Сводка «что плохо выглядит»: карточка с находками + совет пересмотреть решение.
-// Возвращает худший уровень: 0 чисто, 1 мелочи, 2 средне, 3 высокий.
+// "What looks bad" summary: a findings card with advice to reconsider.
+// Returns the worst level: 0 clean, 1 minor, 2 medium, 3 high.
 public fun print_report(pkg: string, ref hits: ScanHit[]) -> int64 {
     set rows: string[] = []
     set nhigh: int64 = 0
@@ -240,7 +237,7 @@ public fun print_report(pkg: string, ref hits: ScanHit[]) -> int64 {
     return worst
 }
 
-// yuki scan <dir>: осмотреть любую распакованную папку руками.
+// yuki scan <dir>: scan any unpacked folder by hand.
 public fun cmd_scan(path: string) {
     if !dir_exists(path) {
         panic(err("not a directory: " + path, 759, path))

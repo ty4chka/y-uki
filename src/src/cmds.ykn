@@ -1,4 +1,4 @@
-// cmds.ykn — команды yuki.
+// cmds.ykn — yuki commands.
 
 load core.utils: cast
 load core.panic: panic
@@ -24,8 +24,6 @@ load .resolver: Node, resolve_tree
 load .view: InstallView
 load .indexadmin: write_entry
 load .trust: trusted_keys, trusted_names, fingerprint, trust_add, trust_remove, keygen, pubkey_of, sign_text
-
-// ── низкоуровневые проверки ─────────────────────────────────────────────
 
 public fun cmd_verify(file: string, expected: string) {
     step(1, 1, "blake3 " + c_accent(file))
@@ -55,10 +53,8 @@ public fun cmd_inspect(archive: string) {
     kv("unpacked", fmt_bytes(rep.total_bytes))
 }
 
-// ── зависимости ─────────────────────────────────────────────────────────
-
-// Скачать и проверить все архивы параллельно. nidx[i] — узел панели для i-й задачи.
-// Возвращает суммарный размер.
+// Downloads and verifies all archives in parallel. nidx[i] is the panel node of task i.
+// Returns the total size.
 fun fetch_many(ref urls: string[], ref sums: string[], ref labels: string[], ref nidx: int64[], ref ~view: InstallView) -> int64 {
     set rnd: bytes = random_bytes(6)
     set dir = join2(cache_dir(), "pool-" + int_str(now_ms()) + "-" + bytes_to_hex(ref rnd))
@@ -82,8 +78,8 @@ fun fetch_many(ref urls: string[], ref sums: string[], ref labels: string[], ref
     return total
 }
 
-// Разрешить дерево, скачать и проверить каждый пакет (параллельно), записать всё в yuki.toml.
-// Общая часть для `add` и `update`.
+// Resolves the tree, downloads and verifies each package (in parallel), writes everything to yuki.toml.
+// Shared by `add` and `update`.
 fun install_tree(name: string, want: string, verb: string) {
     set t0 = now_ms()
     set view = init InstallView(verb + " " + c_accent(name), animation_on())
@@ -103,7 +99,7 @@ fun install_tree(name: string, want: string, verb: string) {
     set total_bytes = fetch_many(ref urls, ref sums, ref labels, ref nidx, ref ~view)
     view.set_phase(2, "verified " + c_dim(fmt_bytes(total_bytes) + ", blake3 + audit, " + int_str(jobs_limit()) + " in parallel"))
 
-    // у корня сначала снимаем прежнее поддерево (то, что нужно только ему), затем записываем новое
+    // the root's old subtree is pruned first (deps only it needed), then the new one is written
     prune_owner(nodes[0].name)
     for i in 0..nodes.len() {
         set via = ""
@@ -223,7 +219,7 @@ public fun cmd_update(only: string) {
     info(int_str(changed) + " updated")
 }
 
-// Сверка manifest с подписанным индексом: смена хеша, снятые (yanked) релизы.
+// Reconciles the manifest with the signed index: hash changes and yanked releases.
 public fun cmd_audit() {
     set deps = list_deps()
     if deps.len() == 0 {
@@ -259,8 +255,7 @@ public fun cmd_audit() {
     ok("all " + int_str(deps.len()) + " dependencies match the index")
 }
 
-// ── мейнтейнер индекса: publish / yank / renew ──────────────────────────
-// Выполняются в клоне репозитория индекса; результат коммитится через PR.
+// Runs in a clone of the index repository; the result is committed through a PR.
 
 fun finish_entry(name: string, seq: int64, versions: JsonValue, keyname: string) {
     write_entry(name, seq, versions, keyname, "", "", "", "", "", json_array([]), "", false)
@@ -349,7 +344,7 @@ public fun cmd_yank(name: string, version: string, keyname: string) {
     info("yanked " + version + ": `yuki audit` will flag it for everyone who uses it")
 }
 
-// Продлить срок действия записи (expires) — запускать по расписанию в CI.
+// Extends the entry expiry (expires); meant to run on a schedule in CI.
 public fun cmd_renew(name: string, keyname: string) {
     need_index_checkout()
     set rel = entry_rel(name)
@@ -365,8 +360,6 @@ public fun cmd_renew(name: string, keyname: string) {
     write_entry(name, old.get("seq").as_int() + 1, versions, keyname, "", "", "", "", "", json_array([]), "", true)
 }
 
-// ── ключи ───────────────────────────────────────────────────────────────
-
 public fun cmd_keys_gen(name: string) {
     set pubk = keygen(name)
     ok("created signing key " + c_accent(name))
@@ -375,7 +368,7 @@ public fun cmd_keys_gen(name: string) {
     info("the secret seed stays in " + config_dir() + "/keys (mode 0600); give out only the public key")
 }
 
-// Подпись файла ключом name: строка "<pubkey> <sig>" для rotation.sigs.
+// Signs the file with key name: one line "<pubkey> <sig>" for rotation.sigs.
 public fun cmd_keys_sign(name: string, file: string) {
     println(pubkey_of(name) + " " + sign_text(name, file_read_text(file)))
 }
@@ -408,8 +401,6 @@ public fun cmd_keys_untrust(name: string) {
         warn("no trusted key named " + name)
     }
 }
-
-// ── тема ────────────────────────────────────────────────────────────────
 
 public fun cmd_theme_path() {
     println(theme_path())

@@ -1,12 +1,11 @@
-// pool.ykn — параллельные загрузки.
-//
-// Пул потоков (std.threads). Данные между потоками не разделяются: у каждой задачи свой
-// каталог-почтовый ящик <dir>/ с файлами
+// pool.ykn — parallel downloads.
+// Thread pool (std.threads). No data is shared between threads: each task has its own
+// mailbox directory <dir>/ with files
 //   job-<i>     "kind<TAB>url<TAB>checksum<TAB>dest<TAB>label"
-//   prog-<i>    "получено всего"  (пишет воркер)
-//   state-<i>   "ok\n<результат>" или "err\n<код>\n<сообщение>"  (пишет воркер)
-// Рисует и опрашивает один поток (главный), воркеры скачивают и сразу проверяют хеш,
-// поэтому анимация не замирает, пока считается blake3.
+//   prog-<i>    "bytes received so far"  (written by the worker)
+//   state-<i>   "ok\n<result>" or "err\n<code>\n<message>"  (written by the worker)
+// One thread (the main one) paints and polls; workers download and verify the hash right away,
+// so the animation does not stall while blake3 is computed.
 
 load core.utils: cast
 load core.panic: panic
@@ -65,7 +64,7 @@ fun run_job(dir: string, i: int64) {
     }
 }
 
-// Точка входа потока. arg = номер задачи + 1 (0 был бы null).
+// Thread entry point. arg = task number + 1 (0 would be null).
 #[thunk]
 fun pool_worker(arg: ptr<void>) {
     set i: int64 = cast(arg, "int64") - 1
@@ -128,7 +127,7 @@ fun read_total(dir: string, i: int64) -> int64 {
     return n
 }
 
-// Обновить панель по файлам прогресса. nidx[i] — узел панели для задачи i (или -1).
+// Refreshes the panel from the progress files. nidx[i] = panel node for task i (or -1).
 public fun pool_paint(dir: string, count: int64, ref nidx: int64[], t0: int64, ref ~view: InstallView) {
     set sum: int64 = 0
     for i in 0..count {
@@ -147,7 +146,7 @@ public fun pool_paint(dir: string, count: int64, ref nidx: int64[], t0: int64, r
     }
 }
 
-// Запустить все задачи не более чем в `parallel` потоков и дождаться завершения.
+// Runs all tasks on at most `parallel` threads and waits for completion.
 public fun pool_run(dir: string, count: int64, parallel: int64, ref nidx: int64[], ref ~view: InstallView) {
     set_env("YUKI_POOL_DIR", dir)
     set handles: uint64[] = []
@@ -160,8 +159,8 @@ public fun pool_run(dir: string, count: int64, parallel: int64, ref nidx: int64[
     set finished: int64 = 0
     set running: int64 = 0
     set t0 = now_ms()
-    // Без region: set_speed кладёт строку в поле панели, а region освобождает её
-    // сразу после кадра -> в следующем кадре читалась длина из указателя (SIGABRT).
+    // No region: set_speed stores the string in a panel field and region frees it
+    // right after the frame -> the next frame read the length from a dangling pointer (SIGABRT).
     loop {
         while started < count && running < parallel {
             rewrite handles[started] = spawn(cast(pool_worker, "ptr<void>"), cast(started + 1, "ptr<void>"))
@@ -204,7 +203,7 @@ public fun pool_ok(dir: string, i: int64) -> bool {
     return eq(str_split(file_read_text(f), "\n")[0], "ok")
 }
 
-// Результат успешной задачи: вторая строка state-<i> ("<путь>\t<байты>").
+// Result of a successful task: second line of state-<i> ("<path>\t<bytes>").
 public fun pool_out(dir: string, i: int64) -> string {
     set l = str_split(file_read_text(p_state(dir, i)), "\n")
     if l.len() < 2 {
@@ -225,7 +224,7 @@ public fun pool_bytes(dir: string, i: int64) -> int64 {
     return parse_int(parts[1]) ?? 0
 }
 
-// Если хоть одна задача упала, поднять первую ошибку (после того как все закончили).
+// If any task failed, raise the first error (after all of them finish).
 public fun pool_raise(dir: string, count: int64, labels: string[]) {
     for i in 0..count {
         if !pool_ok(dir, i) {

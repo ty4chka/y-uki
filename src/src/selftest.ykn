@@ -1,6 +1,7 @@
-// selftest.ykn — `yuki selftest`: проверка собранного бинарника на известных значениях.
-// Запускать сразу после первой сборки: хеши, подписи, потоки, политика путей, JSON, файлы.
-// Сети не нужно, ничего вне временного каталога не трогается.
+// selftest.ykn — `yuki selftest`: checks the built binary against known values.
+// Run it right after the first build: hashes, signatures, threads, path policy,
+// JSON, files. No network is needed and nothing outside the temp directory is
+// touched.
 
 load core.utils: cast
 load core.panic: panic
@@ -23,6 +24,7 @@ load .ui: ok, bad, info, c_dim
 load .util: str_lower, str_pad_end, valid_name, valid_version, ver_cmp, digits_val, edit_distance, is_hex, now_ms, join2, str_split, int_str
 load .verify: is_safe_rel_path, link_target_ok, resolve_link_target, checksum_ok_format, verify_text, signed_message
 load .policy: policy_check, policy_check_link
+load .i18n: i18n_table_ok
 load .tarpack: tar_pack_tree
 
 fun println_header() {
@@ -60,10 +62,10 @@ public fun cmd_selftest() {
     set failed: int64 = 0
     println_header()
 
-    // хеши: известное значение BLAKE3 пустой строки
+    // hashes: the known BLAKE3 value of the empty string
     check(eq(blake3_str(""), "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"), "blake3 of the empty string matches the reference", ref ~failed)
 
-    // подписи: круг и подделка, доменный разделитель
+    // signatures: a full round and tampering, with the domain separator
     set seed: bytes = random_bytes(32)
     set pubk: bytes = ed25519_public_key(ref seed)
     set pub_hex = bytes_to_hex(ref pubk)
@@ -78,7 +80,7 @@ public fun cmd_selftest() {
     set other_pub: bytes = ed25519_public_key(ref other)
     check(!verify_text(bytes_to_hex(ref other_pub), "hello", sig_hex), "a different key is rejected", ref ~failed)
 
-    // имена, версии, расстояния
+    // names, versions, edit distances
     check(valid_name("ripgrep") && valid_name("a-b_c1") && !valid_name("-x") && !valid_name("Up") && !valid_name("a b") && !valid_name(""), "package name rules", ref ~failed)
     check(valid_version("1.2.3") && !valid_version("1.2") && !valid_version("1.2.x") && !valid_version("01.2.3."), "version rules", ref ~failed)
     set vc_a: int64 = ver_cmp("1.10.0", "1.9.9")
@@ -104,7 +106,7 @@ public fun cmd_selftest() {
     check(edit_distance("instal", "install") == 1 && edit_distance("abc", "abc") == 0, "edit distance", ref ~failed)
     check(checksum_ok_format("blake3:" + blake3_str("x")) && !checksum_ok_format("blake3:xyz") && !checksum_ok_format("sha256:" + blake3_str("x")), "checksum format", ref ~failed)
 
-    // пути, симлинки и проверка разрешённых целей симлинков (V-01, V-03)
+    // paths, symlinks and allowed symlink targets (V-01, V-03)
     check(is_safe_rel_path("usr/bin/rg") && !is_safe_rel_path("../x") && !is_safe_rel_path("/etc/x") && !is_safe_rel_path("a/../../b") && !is_safe_rel_path("a\\b"), "safe relative paths", ref ~failed)
     check(link_target_ok("usr/bin/foo", "../lib/foo") && !link_target_ok("usr/bin/foo", "/etc/passwd") && !link_target_ok("usr/bin/foo", "../../../etc/passwd"), "symlink targets stay inside the package tree", ref ~failed)
     check(eq(resolve_link_target("usr/local/bin/hook", "../../../etc/sudoers"), "etc/sudoers"), "resolve_link_target canonicalizes relative symlink target", ref ~failed)
@@ -113,26 +115,29 @@ public fun cmd_selftest() {
     check(policy_check("x", "etc/sudoers.d/x").len() > 0 && policy_check("x", "etc/systemd/system/x.service").len() > 0 && policy_check("x", "etc/polkit-1/rules.d/x").len() > 0 && policy_check("x", "boot/vmlinuz").len() > 0 && policy_check("x", "etc/yuki/trusted_keys").len() > 0, "policy refuses protected paths (sudoers, systemd, polkit, boot, yuki)", ref ~failed)
     check(policy_check("x", "usr/bin/yuki").len() > 0 && policy_check("x", "usr/local/bin/yuki").len() > 0 && policy_check("yuki", "usr/bin/yuki").len() == 0 && policy_check("yuki", "usr/local/bin/yuki").len() == 0, "only the yuki package may replace usr/bin/yuki or usr/local/bin/yuki", ref ~failed)
 
-    // JSON: повторная сериализация стабильна (на этом держатся подписи содержимого)
+    // JSON: re-serialization is stable (content signatures rely on this)
     set j = "{\"b\":[1,2,{\"c\":\"d\"}],\"a\":true}"
     set once = json_stringify(json_parse(j))
     check(eq(json_stringify(json_parse(once)), once), "json parse and stringify are stable", ref ~failed)
 
-    // файлы и хеш файла
+    // localization tables stay parallel
+    check(i18n_table_ok(), "i18n key, EN and RU tables have equal lengths", ref ~failed)
+
+    // files and file hashing
     set dir = join2(dir_temp(), "yuki-selftest-" + int_str(now_ms()))
     dir_create_all(dir)
     set f = join2(dir, "a.txt")
     file_write_text(f, "yuki")
     check(file_exists(f) && eq(file_read_text(f), "yuki") && eq(blake3_file(f), blake3_str("yuki")), "file write, read and blake3_file agree with blake3_str", ref ~failed)
 
-    // потоки: spawn/join работает и поток видит окружение
+    // threads: spawn/join works and the worker sees the environment
     set tf = join2(dir, "thread.txt")
     set_env_local(tf)
     set h = spawn(cast(selftest_thread, "ptr<void>"), cast(7, "ptr<void>"))
     join(h)
     check(file_exists(tf) && eq(file_read_text(tf), "thread-7"), "a worker thread starts, runs and joins", ref ~failed)
 
-    // упаковщик: вложенные каталоги, относительные имена, бит исполнения
+    // packer: nested directories, relative names, the executable bit
     set pk = join2(dir, "pk")
     dir_create_all(join2(pk, "usr/bin"))
     set pk_bin = join2(pk, "usr/bin/x")

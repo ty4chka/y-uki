@@ -1,28 +1,29 @@
-// index.ykn — подписанный git-индекс.
+// index.ykn — the signed git index.
 //
-// Раскладка репозитория индекса:
-//   index/<aa>/<bb>/<имя>.json       запись пакета
-//   index/<aa>/<bb>/<имя>.json.sig   Ed25519-подпись (hex) над "yuki-v1\n" + байты файла
+// Index repository layout:
+//   index/<aa>/<bb>/<name>.json       package record
+//   index/<aa>/<bb>/<name>.json.sig   Ed25519 signature (hex) over "yuki-v1\n" + file bytes
 //
 // {
 //   "name": "json-yukino",
-//   "seq": 12,                 // растёт на каждое изменение: защита от отката
-//   "expires": 1798761600,     // unix-секунды: защита от «замороженного» индекса
+//   "seq": 12,                 // grows on every change: rollback protection
+//   "expires": 1798761600,     // unix seconds: protection against a frozen index
 //   "versions": [
 //     { "version": "1.2.0", "url": "https://github.com/o/r/archive/<commit>.tar.gz",
 //       "checksum": "blake3:<64 hex>", "yanked": false,
-//       "deps": ["ansi-kit@2.0.1", "tomlkit@0.4.0"] }     // версии закреплены точно
+//       "deps": ["ansi-kit@2.0.1", "tomlkit@0.4.0"] }     // versions are pinned exactly
 //   ]
 // }
 //
-// Клиент берёт только нужную запись по HTTPS (sparse), клонировать индекс не нужно.
+// The client fetches only the needed record over HTTPS (sparse); cloning the
+// index is not required.
 
 load core.utils: cast
 load core.panic: panic
 load std.json: JsonValue, json_parse, json_stringify
 load std.outf: strip_ansi
 load std.strings: eq, trim, slice, parse_int, contains
-load std.fs.files: file_exists, file_read_text, file_write_text
+load std.fs.files: file_exists, file_read_text, file_write_text, file_rename
 load .errors: YukiError, err
 load .config: index_urls, state_dir, ensure_dirs, host_target, MAX_INDEX_FILE
 load .fetch: http_text, check_url
@@ -30,6 +31,7 @@ load .trust: trusted_keys, trusted_roles, publish_threshold, fingerprint
 load .verify: VerifyError, verify_text, checksum_ok_format, is_safe_rel_path
 load .util: valid_name, valid_version, ver_cmp, now_secs, valid_dep_spec, join2, sjoin, str_lines, str_lower, str_pad_end, str_split, int_str
 
+// One resolved release of a package, ready for install or display.
 public struct Release {
     name: string
     version: string
@@ -51,32 +53,41 @@ public struct Release {
     license: string
 }
 
+// Result of wrapper-signature verification: the trusted key that signed the
+// wrapper and the publisher keys whose signatures cover it.
 public struct Signed {
     who: int64
     pubs: string[]
 }
 
+// A downloaded index record with its detached signature text.
 public struct EntryText {
     text: string
     sig: string
 }
 
+// Returns the two-level index directory for a package name, e.g. "js/on".
+// Short names are padded with underscores so the path is always two levels deep.
 public fun entry_dir(name: string) -> string {
     set a = str_pad_end(slice(name, 0, 2), 2, "_")
     set b = str_pad_end(slice(name, 2, 4), 2, "_")
     return "index/" + a + "/" + b
 }
 
+// Returns the repository-relative path of the record file for a package name.
 public fun entry_rel(name: string) -> string {
     return entry_dir(name) + "/" + name + ".json"
 }
 
-// ── состояние анти-отката: <state>/seen, строки "<имя> <seq>" ───────────
+// Anti-rollback state: <state>/seen, lines "<name> <seq> [<blake3>]". The
+// optional third field is the blake3 of the accepted document text, so a
+// re-fetch at the same seq can be accepted only when the content is identical.
 
 fun seen_path() -> string {
     return join2(state_dir(), "seen")
 }
 
+// Returns the highest seq recorded for name, or 0 when nothing was recorded.
 public fun seen_get(name: string) -> int64 {
     set f = seen_path()
     if !file_exists(f) {
@@ -85,25 +96,54 @@ public fun seen_get(name: string) -> int64 {
     set ls = str_lines(file_read_text(f))
     for i in 0..ls.len() {
         set p = str_split(trim(ls[i]), " ")
-        if p.len() == 2 && eq(p[0], name) {
+        if p.len() >= 2 && eq(p[0], name) {
             return parse_int(p[1]) ?? 0
         }
     }
     return 0
 }
 
-public fun seen_set(name: string, seq: int64) {
+// Returns the content hash stored for name, or "" when none was recorded.
+// Reads the same record line as seen_get so both always agree.
+public fun seen_hash(name: string) -> string {
+    set f = seen_path()
+    if !file_exists(f) {
+        return ""
+    }
+    set ls = str_lines(file_read_text(f))
+    for i in 0..ls.len() {
+        set p = str_split(trim(ls[i]), " ")
+        if p.len() >= 2 && eq(p[0], name) {
+            if p.len() >= 3 {
+                return p[2]
+            }
+            return ""
+        }
+    }
+    return ""
+}
+
+// Records the accepted seq (and, when non-empty, the content hash) for name.
+// Only the privileged side may call this; the unprivileged loader must not.
+public fun seen_set(name: string, seq: int64, content_hash: string = "") {
     ensure_dirs()
     set f = seen_path()
+    // Atomic replacement: write to a temporary file and rename it into place.
+    // A half-written seen file after a crash would zero the anti-rollback memory (P0).
+    set tmp = f + ".tmp"
     set out: string[] = []
     set found = false
+    set line = name + " " + int_str(seq)
+    if content_hash.len() > 0 {
+        rewrite line = line + " " + content_hash
+    }
     if file_exists(f) {
         set ls = str_lines(file_read_text(f))
         for i in 0..ls.len() {
             set p = str_split(trim(ls[i]), " ")
-            if p.len() == 2 {
+            if p.len() >= 2 {
                 if eq(p[0], name) {
-                    out.push(name + " " + int_str(seq))
+                    out.push(line)
                     rewrite found = true
                 } else {
                     out.push(trim(ls[i]))
@@ -112,12 +152,11 @@ public fun seen_set(name: string, seq: int64) {
         }
     }
     if !found {
-        out.push(name + " " + int_str(seq))
+        out.push(line)
     }
-    file_write_text(f, sjoin(out, "\n") + "\n")
+    file_write_text(tmp, sjoin(out, "\n") + "\n")
+    file_rename(tmp, f)
 }
-
-// ── разбор и проверка записи ────────────────────────────────────────────
 
 fun entry_url_ok(url: string) -> bool {
     if contains(url, "\"") {
@@ -131,7 +170,9 @@ fun entry_url_ok(url: string) -> bool {
     return true
 }
 
-// Взять файл индекса с первого отвечающего зеркала (подписи проверяются потом, одни и те же).
+// Fetches an index file from the first mirror that responds; signatures are
+// verified later and are mirror-independent. Panics with YukiError (404) when
+// every mirror fails.
 public fun index_get(rel: string, max_bytes: int64) -> string {
     set urls = index_urls()
     set why = ""
@@ -153,7 +194,8 @@ public fun index_get(rel: string, max_bytes: int64) -> string {
     panic(err("all index mirrors failed: " + why, 404, rel))
 }
 
-// Скачать запись и подпись (только сеть, без проверок).
+// Downloads a record and its signature (network only, no verification).
+// Panics with YukiError (201/404) on an invalid name or fetch failure.
 public fun fetch_entry(name: string) -> EntryText {
     if !valid_name(name) {
         panic(err("invalid package name: " + name, 201, name))
@@ -164,13 +206,15 @@ public fun fetch_entry(name: string) -> EntryText {
     return EntryText { text: text, sig: sig }
 }
 
-// Найти релиз. want == "" — самый новый не снятый (yanked).
+// Finds a release. want == "" selects the newest release that is not yanked.
+// Panics with YukiError or VerifyError when the record cannot be trusted.
 public fun resolve(name: string, want: string) -> Release {
     set e = fetch_entry(name)
     return resolve_text(name, want, e.text, e.sig, true)
 }
 
-// Описание пакета — только для показа: одна строка без управляющих символов, с лимитом длины.
+// Sanitizes a package description for display: one line without control
+// characters, limited to max characters.
 fun clean_text(s: string, max: int64) -> string {
     set one = str_split(strip_ansi(s), "\n")[0]
     if one.len() > max {
@@ -197,8 +241,10 @@ fun has(ref l: string[], x: string) -> bool {
     return false
 }
 
-// Шаг 1 (до разбора JSON): подпись обёртки. Файл .sig: строки "<pubkey> <sig>" или одна старая "<sig>".
-// Возвращает ключ подписавшего обёртку и издателей, чья подпись легла на обёртку.
+// Step 1 (before JSON parsing): the wrapper signature. The .sig file holds
+// lines "<pubkey> <sig>" or a single legacy "<sig>" line. Returns the index of
+// the signing key and the publisher keys covering the wrapper; panics with
+// VerifyError when no trusted key signed it.
 fun verify_wrapper(text: string, sigtext: string, ref keys: string[], ref roles: string[], rel_path: string) -> Signed {
     set who: int64 = -1
     set pubs: string[] = []
@@ -239,8 +285,9 @@ fun verify_wrapper(text: string, sigtext: string, ref keys: string[], ref roles:
     return Signed { who: who, pubs: pubs }
 }
 
-// Шаг 2: содержимое (versions) должно быть подтверждено достаточным числом ИЗДАТЕЛЕЙ.
-// Ключ-«продлеватель» может подписать обёртку (срок), но не содержимое.
+// Step 2: the content (versions) must be confirmed by a sufficient number of
+// PUBLISHERS. A renewer key may sign the wrapper (the expiry) but not the content.
+// Panics with VerifyError when too few publisher signatures cover the content.
 fun verify_content(doc: JsonValue, ref keys: string[], ref roles: string[], ref ~pubs: string[], rel_path: string) {
     set vtext = "content\n" + json_stringify(doc.get("versions"))
     set cs = doc.get("content_sigs")
@@ -269,10 +316,11 @@ fun safe_token(s: string) -> bool {
     return !contains(s, "\n") && !contains(s, "\r") && !contains(s, "\0")
 }
 
-// Вся проверка записи: подпись, имя, срок, откат, выбор релиза, формат полей.
-// Работает над переданным текстом, поэтому привилегированная сторона может
-// заново проверить то, что принёс непривилегированный загрузчик.
-// record == true запоминает seq (защита от отката); непривилегированной фазе нельзя.
+// Full record check: signature, name, expiry, rollback, release selection,
+// field formats. Operates on the passed text so the privileged side can
+// re-verify unprivileged fetches. record == true stores the seq (rollback
+// protection); the unprivileged phase must not. Panics with YukiError or
+// VerifyError on any violation.
 public fun resolve_text(name: string, want: string, text: string, sig: string, record: bool) -> Release {
     if !valid_name(name) {
         panic(err("invalid package name: " + name, 201, name))
@@ -341,14 +389,15 @@ public fun resolve_text(name: string, want: string, text: string, sig: string, r
         }
     }
 
-    // готовая сборка под эту платформу
+    // ready-made build for this platform
     set bin_url = versions.at(best).get("bin").get(host_target()).get("url").as_string_or("")
     set bin_sum = versions.at(best).get("bin").get(host_target()).get("checksum").as_string_or("")
     if bin_url.len() > 0 && (!entry_url_ok(bin_url) || !checksum_ok_format(bin_sum)) {
         panic(err("binary release has a bad URL or checksum", 219, rel_path))
     }
 
-    // исходники: архив, команда сборки и явный список файлов, которые попадут в пакет
+    // sources: the archive, the build command and the explicit list of files
+    // that end up in the package
     set src = versions.at(best).get("src")
     set src_url = src.get("url").as_string_or("")
     set src_sum = src.get("checksum").as_string_or("")

@@ -44,7 +44,6 @@ def chip(x, y, label, fill, fg, size=19, h=40, bold=600):
     return (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{h//2}" fill="{fill}"/>'
             f'<text x="{x + w/2}" y="{y + h/2 + size*0.35}" text-anchor="middle" font-family="{FONT}" font-size="{size}" font-weight="{bold}" fill="{fg}">{esc(label)}</text>'), w
 
-# ───────── banner ─────────
 def banner(c):
     W, H = 1200, 440
     b = f'<defs><clipPath id="r"><rect width="{W}" height="{H}" rx="56"/></clipPath></defs><g clip-path="url(#r)">'
@@ -61,7 +60,6 @@ def banner(c):
     for label in ("Yukino", "Ed25519", "BLAKE3", "pacman-style"):
         s, w = chip(x, 372, label, c["sec"], c["onsec"], 19)
         b += s; x += w + 10
-    # терминал
     tx, ty, tw_, th = 700, 70, 440, 300
     b += (f'<path d="M{tx+44},{ty} H{tx+tw_-44} Q{tx+tw_},{ty} {tx+tw_},{ty+44} V{ty+th-44} Q{tx+tw_},{ty+th} {tx+tw_-44},{ty+th} '
           f'H{tx+14} Q{tx},{ty+th} {tx},{ty+th-14} V{ty+44} Q{tx},{ty} {tx+44},{ty} Z" fill="#1e1e2e" stroke="#313244" stroke-width="2"/>')
@@ -83,7 +81,6 @@ def banner(c):
     b += "</g>"
     return svg(W, H, b, "yuki: package manager for Yukino")
 
-# ───────── кнопки ─────────
 def button(label, kind, c, w=None, size=21):
     h = 60
     w = w or tw(label, size, 0.58) + 96
@@ -94,13 +91,11 @@ def button(label, kind, c, w=None, size=21):
     else:
         bg, fg, stroke = "none", c["prim"], c["outline"]
     body = f'<rect x="1" y="1" width="{w-2}" height="{h-2}" rx="30" fill="{bg}" stroke="{stroke}" stroke-width="{2 if stroke!="none" else 0}"/>'
-    # маленькая выразительная фигура слева
     shape_fill = fg if kind != "outlined" else c["pc"]
     body += f'<path d="{shape(34, 30, 11, 8, 0.12)}" fill="{shape_fill}" opacity="{0.95 if kind!="outlined" else 1}"/>'
     body += f'<text x="{w/2 + 14}" y="{h/2 + size*0.35}" text-anchor="middle" font-family="{FONT}" font-size="{size}" font-weight="700" fill="{fg}">{esc(label)}</text>'
     return svg(w, h, body, label)
 
-# ───────── плитки с цифрами ─────────
 def stat(num, label, c, tone):
     W, H = 280, 170
     fills = {"a": (c["pc"], c["onpc"]), "b": (c["ter"], c["onter"]), "c": (c["sec"], c["onsec"]), "d": (c["card"], c["text"])}
@@ -112,7 +107,6 @@ def stat(num, label, c, tone):
     b += f'<text x="28" y="140" font-family="{FONT}" font-size="21" font-weight="600" fill="{fg}" opacity=".85">{esc(label)}</text></g>'
     return svg(W, H, b, f"{num} {label}")
 
-# ───────── иконки ─────────
 def glyph(kind, cx, cy, col):
     s = f'stroke="{col}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"'
     if kind == "sign":
@@ -144,7 +138,6 @@ def icon_shape(kind, size, shape_fill, glyph_col, n=9, amp=0.07, rot=0.0):
     c = size / 2
     return svg(size, size, f'<path d="{shape(c, c, size*0.4, n, amp, rot)}" fill="{shape_fill}"/>{glyph(kind, c, c, glyph_col)}'.replace("cx=", "cx="), kind)
 
-# ───────── карточки ─────────
 def card(title, lines, icon, c, tone):
     W, H = 388, 232
     fills = {"a": (c["pc"], c["onpc"], c["prim"], c["onprim"]), "b": (c["ter"], c["onter"], c["onter"], c["ter"]),
@@ -158,7 +151,6 @@ def card(title, lines, icon, c, tone):
         b += f'<text x="30" y="{164 + i*26}" font-family="{FONT}" font-size="18" fill="{fg}" opacity=".88">{esc(ln)}</text>'
     return svg(W, H, b, title)
 
-# ───────── прочее ─────────
 def divider(c):
     W, H = 1200, 28
     d = ""
@@ -199,7 +191,6 @@ def who(label, bg):
 def section_icon(kind, n=9, amp=.07):
     return icon_shape(kind, 48, "#6b4fd8", "#ffffff", n, amp)
 
-# ───────── числа из реального кода ─────────
 src = os.path.join(os.path.dirname(OUT), "yuki", "src")
 def count_cmds():
     try:

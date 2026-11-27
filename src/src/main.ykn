@@ -1,4 +1,5 @@
-// main.ykn — точка входа yuki: флаги в стиле pacman, диспетчер команд, единая обработка ошибок.
+// main.ykn — yuki entry point: pacman-style flags, the command dispatcher and
+// unified error handling.
 
 load core.utils: cast
 load core.panic: panic
@@ -35,7 +36,7 @@ fun row(cmd: string, args: string, what: string) {
 
 fun usage() {
     banner(VERSION)
-    println("  system  " + c_dim(t("help.section.system", [])))
+    println("  " + t("help.section.system.title", []) + "  " + c_dim(t("help.section.system", [])))
     row("install", "<pkg>...", "binary for your platform, or build from source")
     row("reinstall | uninstall", "<pkg>...", "repair or remove (-Rs also removes unneeded deps)")
     row("upgrade | self-update", "[pkg]", "move to newer signed releases")
@@ -45,7 +46,7 @@ fun usage() {
     row("profile", "list|show|add|remove|install", "package sets: yours and curated ones")
     row("publisher", "list|show", "who stands behind a package: platforms + signing keys")
     println("")
-    println("  look around  " + c_dim(t("help.section.look", [])))
+    println("  " + t("help.section.look.title", []) + "  " + c_dim(t("help.section.look", [])))
     row("search | show", "<word> | <pkg>", "find packages, read their description")
     row("list | info | files", "", "what is installed")
     row("owns | why", "<path> | <pkg>", "who owns a file, why a package is here")
@@ -56,7 +57,7 @@ fun usage() {
     row("export | import", "[file]", "move a package list between machines")
     row("catalog | tags", "[query] | [prefix]", "browse the signed catalog, its topics")
     println("")
-    println("  project  " + c_dim(t("help.section.project", [])))
+    println("  " + t("help.section.project.title", []) + "  " + c_dim(t("help.section.project", [])))
     row("add | remove", "<lib>", "resolve, verify, pin in yuki.toml")
     row("fetch | update | audit", "", "re-verify, upgrade, compare with the index")
     println("")
@@ -69,7 +70,7 @@ fun usage() {
     row("index", "add|check|catalog|renew-all", "manage the index repository")
     row("publish | yank | renew", "", "library releases")
     println("")
-    println("  help  " + c_dim(t("help.section.help", [])))
+    println("  " + t("help.section.help.title", []) + "  " + c_dim(t("help.section.help", [])))
     row("doctor | config | clean", "", "check the setup, show settings, free cache")
     row("selftest", "", "check this build: hashes, signatures, threads")
     row("completions", "bash|zsh|fish", "shell completion")
@@ -86,8 +87,6 @@ fun code_str(n: int32) -> string {
     }
     return "Y" + s
 }
-
-// ── флаги в стиле pacman → обычные команды ──────────────────────────────
 
 fun rest_of(ref raw: string[]) -> string[] {
     set out: string[] = []
@@ -137,7 +136,7 @@ fun translate(ref raw: string[]) -> string[] {
     panic(err(t("err.unknown_option", [f]), 201, f))
 }
 
-// Флаги превращаются в переменные окружения, остальное — позиционные аргументы.
+// Flags become environment variables; the rest are positional arguments.
 fun strip_flags(ref raw: string[]) -> string[] {
     set out: string[] = []
     for i in 0..raw.len() {
@@ -164,13 +163,11 @@ fun is_system_cmd(cmd: string) -> bool {
     return eq(cmd, "install") || eq(cmd, "reinstall") || eq(cmd, "uninstall") || eq(cmd, "autoremove") || eq(cmd, "upgrade") || eq(cmd, "self-update") || eq(cmd, "list") || eq(cmd, "info") || eq(cmd, "files") || eq(cmd, "owns") || eq(cmd, "why") || eq(cmd, "tree") || eq(cmd, "rdeps") || eq(cmd, "related") || eq(cmd, "graph") || eq(cmd, "orphans") || eq(cmd, "outdated") || eq(cmd, "search") || eq(cmd, "show") || eq(cmd, "check") || eq(cmd, "sys-audit") || eq(cmd, "hold") || eq(cmd, "unhold") || eq(cmd, "history") || eq(cmd, "rollback") || eq(cmd, "export") || eq(cmd, "import") || eq(cmd, "doctor") || eq(cmd, "config") || eq(cmd, "profile") || eq(cmd, "publisher") || eq(cmd, "catalog") || eq(cmd, "tags")
 }
 
-// ── диспетчеры ──────────────────────────────────────────────────────────
-
 fun force() -> bool {
     return eq(get_or("YUKI_FORCE", ""), "1")
 }
 
-// true — команда распознана и выполнена
+// true means the command was recognized and executed.
 fun run_system(ref argv: string[]) -> bool {
     set cmd = argv[0]
     set n = argv.len()
@@ -460,9 +457,9 @@ fun dispatch(ref argv: string[]) {
 }
 
 // Intercepts the top-level --lang VALUE / --lang=VALUE option before any
-// translation or flag stripping: resolves the UI language once, caches it in
-// YUKI_LANG_CACHE and removes the consumed tokens. An empty or invalid value
-// falls back to auto-detection; this never crashes.
+// translation or flag stripping: pins the UI language through YUKI_LANG and
+// removes the consumed tokens. An empty or invalid value falls back to
+// auto-detection; this never crashes.
 fun apply_lang(raw: string[]) -> string[] {
     set v = ""
     for i in 0..raw.len() {

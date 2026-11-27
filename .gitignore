@@ -1,2 +1,4 @@
 bin/
 runtime/
+yuki-work/
+__pycache__/

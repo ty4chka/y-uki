@@ -1,14 +1,14 @@
-// catalog.ykn — подписанный каталог одним куском.
-// Отдельный модуль, чтобы разорвать цикл зависимостей
-// tools -> sysinstall -> publisher -> tools (E0302): и tools, и publisher,
-// и sysinstall читают каталог через verified_catalog() отсюда.
+// catalog.ykn — the signed catalog as a single document. Separate module to
+// break the tools -> sysinstall -> publisher -> tools dependency cycle (E0302):
+// all three read the catalog through verified_catalog().
 
 load core.panic: panic
 load std.json: json_parse
+load std.hash: blake3_str
 load std.fs.files: file_read_text
-load std.strings: trim
+load std.strings: trim, eq
 load .errors: YukiError, err
-load .index: seen_get, seen_set
+load .index: seen_get, seen_set, seen_hash
 load .stage: stage_create, stage_remove, run_child
 load .trust: trusted_keys, trusted_roles
 load .verify: VerifyError, verify_text_with_any
@@ -16,6 +16,9 @@ load .priv: is_root
 load .util: join2, now_secs
 load .view: InstallView
 
+// Fetches the signed catalog through the unprivileged helper and returns the
+// verified text. Records the anti-rollback state only as root. Panics with
+// YukiError (202/204/205/755) or VerifyError when the catalog cannot be trusted.
 public fun verified_catalog() -> string {
     set stage = stage_create()
     set text = ""
@@ -44,11 +47,23 @@ public fun verified_catalog() -> string {
         if doc.get("expires").as_int() < now_secs() {
             panic(err("catalog has expired", 204, "catalog.json"))
         }
-        if doc.get("seq").as_int() < seen_get("__catalog__") {
+        // Anti-rollback, seq vs the recorded state:
+        //   seq < seen  -> panic
+        //   seq == seen -> accept if the stored hash matches, else panic; a
+        //                  record without a hash is accepted and backfilled
+        //   seq > seen  -> accept and record
+        set seq = doc.get("seq").as_int()
+        set prev = seen_get("__catalog__")
+        set content_hash = blake3_str(text)
+        set stored_hash = seen_hash("__catalog__")
+        if seq < prev {
             panic(err("catalog is older than one already seen (rollback attack?)", 205, "catalog.json"))
         }
+        if seq == prev && stored_hash.len() > 0 && !eq(content_hash, stored_hash) {
+            panic(err("catalog changed at the same seq (rollback attack?)", 205, "catalog.json"))
+        }
         if is_root() {
-            seen_set("__catalog__", doc.get("seq").as_int())
+            seen_set("__catalog__", seq, content_hash)
         }
     } catch e: YukiError {
         stage_remove(stage)

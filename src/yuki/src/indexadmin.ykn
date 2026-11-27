@@ -1,12 +1,10 @@
-// indexadmin.ykn — инструменты мейнтейнера индекса и CI.
-//
-//   yuki index add <release.json> <key>   добавить релиз (хеши докачиваются и проверяются сами)
-//   yuki index check [download]           проверка всего индекса: подписи, поля, зависимости, сроки
-//   yuki index catalog <key>              пересобрать подписанный catalog.json для `yuki search`
-//   yuki index renew-all <key> [days]     продлить записи, которые скоро истекают
-//   profiles.json (необязательный)        кураторские профили для catalog.json
-//
-// release.json (массивы вместо словарей, чтобы формат не зависел от имён платформ):
+// indexadmin.ykn — index maintainer tools and CI.
+//   yuki index add <release.json> <key>   add a release (hashes are fetched and verified automatically)
+//   yuki index check [download]           check the whole index: signatures, fields, dependencies, expiry
+//   yuki index catalog <key>              rebuild the signed catalog.json for `yuki search`
+//   yuki index renew-all <key> [days]     extend entries that expire soon
+//   profiles.json (optional)              curated profiles for catalog.json
+// release.json (arrays instead of maps so the format does not depend on platform names):
 // {
 //   "name": "ripgrep", "kind": "app", "version": "14.1.0",
 //   "summary": "line-oriented search tool", "homepage": "https://…", "license": "MIT",
@@ -16,7 +14,7 @@
 //            "files": [ { "from": "target/release/rg", "to": "usr/bin/rg", "mode": "755" } ] },
 //   "deps": ["pcre2@10.42.0"]
 // }
-// Для kind = "lib": вместо bin/src указывается "url" архива. Поле "checksum" можно не писать.
+// For kind = "lib": use an archive "url" instead of bin/src. "checksum" may be omitted.
 
 load core.utils: cast
 load core.panic: panic
@@ -44,9 +42,9 @@ fun need_checkout() {
     }
 }
 
-// Записать entry и подпись. Пустые kind/summary/homepage/license берутся из существующего файла.
-// renew == true: содержимое не менялось, старые подписи содержимого (content_sigs) сохраняются,
-// поэтому ключ-«продлеватель» может обновить срок, но не может изменить релизы.
+// Writes the entry and its signature. Empty kind/summary/homepage/license fall back to the existing file.
+// renew == true: content is unchanged, old content signatures (content_sigs) are kept,
+// so a "renewer" key can extend expiry but cannot change the releases.
 public fun write_entry(name: string, seq: int64, versions: JsonValue, keyname: string, kind: string, summary: string, homepage: string, license: string, repository: string, tags: JsonValue, publisher: string, renew: bool) {
     set rel = entry_rel(name)
     set k = kind
@@ -83,7 +81,7 @@ public fun write_entry(name: string, seq: int64, versions: JsonValue, keyname: s
     if k.len() == 0 {
         rewrite k = "lib"
     }
-    // подписи содержимого: при продлении переносятся, иначе содержимое подписывает этот ключ
+    // content signatures: carried over on renew, otherwise this key signs the content
     set vtext = "content\n" + json_stringify(versions.cp())
     set csigs = json_array([])
     set carried = false
@@ -133,8 +131,6 @@ public fun write_entry(name: string, seq: int64, versions: JsonValue, keyname: s
     ok("wrote " + c_accent(rel) + " " + c_dim("seq " + int_str(seq) + ", valid 90 days"))
 }
 
-// ── index add ───────────────────────────────────────────────────────────
-
 fun filled_checksum(url: string, given: string, label: string) -> string {
     check_url(url)
     if given.len() > 0 {
@@ -169,7 +165,7 @@ public fun cmd_index_add(file: string, keyname: string) {
     if !eq(kind, "lib") && !eq(kind, "app") {
         panic(err("kind must be lib or app", 218, file))
     }
-    // обязательное поле одно — summary; остальные необязательные, но полезные
+    // the only required field is summary; the rest are optional but useful
     if rj.get("summary").as_string_or("").len() == 0 {
         panic(err("required field \"summary\" is missing (one line: what the package does)", 219, file))
     }
@@ -181,7 +177,7 @@ public fun cmd_index_add(file: string, keyname: string) {
     }
     set repo = rj.get("repository").as_string_or("")
     if repo.len() > 0 {
-        // check_url паникует на плохом url (void), поэтому оборачиваем
+        // check_url panics on a bad url (void), so wrap it
         sus {
             check_url(repo)
         } catch {
@@ -264,8 +260,6 @@ public fun cmd_index_add(file: string, keyname: string) {
     write_entry(name, seq, versions, keyname, kind, rj.get("summary").as_string_or(""), rj.get("homepage").as_string_or(""), rj.get("license").as_string_or(""), repo, rj.get("tags"), rj.get("publisher").as_string_or(""), false)
     info("next: git add index && git commit -S -m \"" + name + " " + version + "\" && open a pull request")
 }
-
-// ── index check (CI) ────────────────────────────────────────────────────
 
 fun stem_of(path: string) -> string {
     return path_file_stem(path)
@@ -378,9 +372,7 @@ public fun cmd_index_check(download: bool) {
     ok("index is healthy " + c_dim(int_str(checked) + " release(s) verified"))
 }
 
-// ── profiles.json: кураторские профили каталога ─────────────────────────
-
-// Текущее содержимое profiles.json (пустой массив, если файла нет).
+// Current profiles.json content (empty array when the file is missing).
 fun read_profiles_doc() -> JsonValue {
     if !file_exists("profiles.json") {
         return json_array([])
@@ -388,9 +380,9 @@ fun read_profiles_doc() -> JsonValue {
     return json_parse(file_read_text("profiles.json"))
 }
 
-// Массив проблем в profiles.json ([] — всё в порядке). Файл необязательный:
-// каждый профиль — { "name", "summary", "packages": [...] }, пакеты должны
-// существовать в индексе, чтобы профиль нельзя было собрать из пустышек.
+// List of problems in profiles.json ([] = fine). The file is optional:
+// each profile is { "name", "summary", "packages": [...] }, and the packages must
+// exist in the index so a profile cannot be built from placeholders.
 fun profile_errors() -> string[] {
     set out: string[] = []
     if !file_exists("profiles.json") {
@@ -434,11 +426,7 @@ fun profile_errors() -> string[] {
     return out
 }
 
-// ── catalog ─────────────────────────────────────────────────────────────
-
-// ── publishers.json: издатели каталога (платформы + ключи) ──────────────
-
-// Текущее содержимое publishers.json (пустой массив, если файла нет).
+// Current publishers.json content (empty array when the file is missing).
 fun read_publishers_doc() -> JsonValue {
     if !file_exists("publishers.json") {
         return json_array([])
@@ -446,7 +434,7 @@ fun read_publishers_doc() -> JsonValue {
     return json_parse(file_read_text("publishers.json"))
 }
 
-// Отпечаток выглядит как ключ: hex и пробелы, не короче 8 знаков без пробелов.
+// A fingerprint looks like a key: hex and spaces, at least 8 non-space chars.
 fun fp_ok(fp: string) -> bool {
     set bare = sjoin(str_split(fp, " "), "")
     if bare.len() < 8 {
@@ -461,11 +449,11 @@ fun fp_ok(fp: string) -> bool {
     return true
 }
 
-// Массив проблем в publishers.json ([] — всё в порядке). Файл необязательный:
-// профиль = { name, display?, summary?, github?, gitlab?, homepage?, keys[] }.
-// keys обязательны: без них издателю нечем верифицировать релизы.
-// Заодно проверяются ссылки: запись индекса с "publisher" должна указывать
-// на существующий профиль.
+// List of problems in publishers.json ([] = fine). The file is optional:
+// profile = { name, display?, summary?, github?, gitlab?, homepage?, keys[] }.
+// keys are required: without them the publisher cannot verify releases.
+// Cross-links are checked too: an index entry with "publisher" must point
+// to an existing profile.
 fun publishers_errors() -> string[] {
     set out: string[] = []
     if !file_exists("publishers.json") {
@@ -602,8 +590,6 @@ public fun cmd_index_catalog(keyname: string) {
     ok("wrote catalog.json and .sig " + c_dim(int_str(n_pk) + " " + plural(n_pk, "package", "packages") + ptail + pbtail + ", seq " + int_str(seq)))
 }
 
-// ── renew-all ───────────────────────────────────────────────────────────
-
 public fun cmd_index_renew_all(keyname: string, days: int64) {
     need_checkout()
     set all = dir_walk("index")
@@ -626,8 +612,6 @@ public fun cmd_index_renew_all(keyname: string, days: int64) {
     }
     ok("renewed " + int_str(renewed) + " entr" + "ies")
 }
-
-// ── cosign: второй (третий…) издатель подтверждает содержимое ──────────
 
 public fun cmd_index_cosign(name: string, keyname: string) {
     need_checkout()

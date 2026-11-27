@@ -1,6 +1,6 @@
-// pipeline.ykn — «скачать → сверить хеш → проверить архив → положить в кэш».
-// Кэш содержимо-адресуемый: <cache>/<blake3-hex><расширение>. Каждый файл
-// проходит проверку при каждом использовании, так что подмена кэша не страшна.
+// pipeline.ykn — download -> hash check -> archive audit -> cache.
+// The cache is content-addressed: <cache>/<blake3-hex><extension>. Every file
+// is re-verified on every use, so cache tampering is harmless.
 
 load core.panic: panic
 load std.fs.files: file_exists, file_remove, file_rename, file_size
@@ -34,7 +34,7 @@ public fun archive_ext(url: string) -> string {
     panic(err("unsupported archive type (expected .tar, .tar.gz, .tar.xz or .tar.zst)", 410, url))
 }
 
-// Проверить уже лежащий в кэше файл. true — можно использовать.
+// Checks a file already in the cache. true = usable.
 fun cache_hit(path: string, checksum: string) -> bool {
     if !file_exists(path) {
         return false
@@ -49,7 +49,7 @@ fun cache_hit(path: string, checksum: string) -> bool {
     return good
 }
 
-// Проверенный архив в кэше. node — номер узла в панели (или -1, если панели нет).
+// A verified archive in the cache.
 public fun fetch_verified(url: string, checksum: string, label: string, prog_path: string) -> Fetched {
     if !checksum_ok_format(checksum) {
         panic(err("malformed checksum", 411, url))
@@ -87,7 +87,7 @@ public fun fetch_verified(url: string, checksum: string, label: string, prog_pat
     return Fetched { path: final_path, bytes: size, cached: false }
 }
 
-// Для publish: скачать архив, проверить его и вернуть "blake3:<hex>" без заранее известного хеша.
+// For publish: download the archive, verify it, return "blake3:<hex>" with no pinned hash.
 public fun fetch_unpinned(url: string) -> string {
     check_url(url)
     ensure_dirs()
